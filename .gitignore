@@ -1,0 +1,15 @@
+# Java compiled files
+*.class
+out/
+target/
+build/
+
+# macOS
+.DS_Store
+
+# VS Code local settings
+.vscode/
+
+# Environment files
+.env
+.env.*
