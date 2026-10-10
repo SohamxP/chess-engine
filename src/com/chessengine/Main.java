@@ -3,7 +3,7 @@ package com.chessengine;
 
 import com.chessengine.board.Board;
 import com.chessengine.board.Move;
-import com.chessengine.rules.PawnMoveGenerator;
+import com.chessengine.rules.KnightMoveGenerator;
 
 import java.util.List;
 
@@ -12,32 +12,32 @@ public class Main {
     public static void main(String[] args) {
 
         Board board = new Board();
-        PawnMoveGenerator pawnGenerator = new PawnMoveGenerator();
+        KnightMoveGenerator knightGenerator =
+                new KnightMoveGenerator();
 
         System.out.println("Initial Board:");
         board.printBoard();
 
-        // Generate moves for white pawn at e2
-        List<Move> moves = pawnGenerator.generateMoves(
-            board, 6, 4
-        );
+        // Test white knight at g1
+        List<Move> moves =
+                knightGenerator.generateMoves(board, 7, 6);
 
-        System.out.println("\nPossible moves for pawn at e2:");
+        System.out.println("\nPossible moves for knight at g1:");
 
         for (Move move : moves) {
             System.out.println(move);
         }
 
-        // Move pawn from e2 to e4
-        board.makeMove(new Move(6, 4, 4, 4));
+        // Move knight from g1 to f3
+        board.makeMove(new Move(7, 6, 5, 5));
 
-        System.out.println("\nAfter e2 to e4:");
+        System.out.println("\nAfter g1 to f3:");
         board.printBoard();
 
-        // Generate moves for pawn now at e4
-        moves = pawnGenerator.generateMoves(board, 4, 4);
+        // Generate moves from f3
+        moves = knightGenerator.generateMoves(board, 5, 5);
 
-        System.out.println("\nPossible moves for pawn at e4:");
+        System.out.println("\nPossible moves for knight at f3:");
 
         for (Move move : moves) {
             System.out.println(move);
