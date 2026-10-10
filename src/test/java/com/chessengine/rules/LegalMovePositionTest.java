@@ -116,4 +116,24 @@ public class LegalMovePositionTest {
             )
         );
     }
+    
+    @Test
+    void kingCannotMoveIntoPawnAttack() {
+        Board board = FenParser.parse(
+            "4k3/8/8/8/8/3p4/8/4K3 w - - 0 1"
+        );
+
+        // Black pawn on d3 attacks e2.
+        assertTrue(
+            attacks.isSquareAttacked(board, 6, 4, false)
+        );
+
+        // White king cannot move from e1 to e2.
+        assertFalse(
+            legal.isLegalMove(
+                board, new Move(7, 4, 6, 4)
+            )
+        );
+    }
+
 }
