@@ -68,4 +68,30 @@ public class Board {
 
         System.out.println("  a b c d e f g h");
     }
+
+    public static Board fromPosition(char[][] position) {
+        if (position == null || position.length != 8) {
+            throw new IllegalArgumentException(
+                "Board must have exactly 8 rows"
+            );
+        }
+
+        char[][] copiedSquares = new char[8][8];
+
+        for (int row = 0; row < 8; row++) {
+            if (position[row] == null || position[row].length != 8) {
+                throw new IllegalArgumentException(
+                    "Each board row must have exactly 8 columns"
+                );
+            }
+
+            System.arraycopy(
+                position[row], 0,
+                copiedSquares[row], 0, 8
+            );
+        }
+
+        return new Board(copiedSquares);
+    }
+
 }
