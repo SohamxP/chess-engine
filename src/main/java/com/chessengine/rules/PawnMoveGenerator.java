@@ -1,4 +1,3 @@
-
 package com.chessengine.rules;
 
 import com.chessengine.board.Board;
@@ -7,60 +6,43 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class PawnMoveGenerator {
+    private void addMove(List<Move> moves, int fr, int fc, int tr, int tc) {
+        if (tr == 0 || tr == 7) {
+            for (char promotion : new char[]{'Q', 'R', 'B', 'N'}) {
+                moves.add(new Move(fr, fc, tr, tc, promotion));
+            }
+        } else moves.add(new Move(fr, fc, tr, tc));
+    }
 
-    public List<Move> generateMoves(
-            Board board, int row, int col) {
-
+    public List<Move> generateMoves(Board board, int row, int col) {
         List<Move> moves = new ArrayList<>();
-
         char pawn = board.getPiece(row, col);
-
-        if (pawn != 'P' && pawn != 'p') {
-            return moves;
-        }
-
-        int direction = (pawn == 'P') ? -1 : 1;
-        int startingRow = (pawn == 'P') ? 6 : 1;
-
+        if (pawn != 'P' && pawn != 'p') return moves;
+        boolean white = pawn == 'P';
+        int direction = white ? -1 : 1;
         int nextRow = row + direction;
-
-        // Move forward one square
-        if (nextRow >= 0 && nextRow < 8 &&
-                board.getPiece(nextRow, col) == '.') {
-
-            moves.add(new Move(row, col, nextRow, col));
-
-            // Move forward two squares from starting rank
+        if (nextRow < 0 || nextRow >= 8) return moves;
+        if (board.getPiece(nextRow, col) == '.') {
+            addMove(moves, row, col, nextRow, col);
             int twoRows = row + 2 * direction;
-
-            if (row == startingRow &&
-                    board.getPiece(twoRows, col) == '.') {
-
+            if (row == (white ? 6 : 1) && board.getPiece(twoRows, col) == '.') {
                 moves.add(new Move(row, col, twoRows, col));
             }
         }
-
-        // Diagonal captures
         for (int dc : new int[]{-1, 1}) {
-
-            int newCol = col + dc;
-
-            if (nextRow < 0 || nextRow >= 8 ||
-                    newCol < 0 || newCol >= 8) {
-                continue;
-            }
-
-            char target = board.getPiece(nextRow, newCol);
-
-            if (target != '.' &&
-                    Character.isUpperCase(pawn)
-                    != Character.isUpperCase(target)
+            int c = col + dc;
+            if (c < 0 || c >= 8) continue;
+            char target = board.getPiece(nextRow, c);
+            if (target != '.' && Character.isUpperCase(target) != white
                     && Character.toLowerCase(target) != 'k') {
-
-                moves.add(new Move(row, col, nextRow, newCol));
+                addMove(moves, row, col, nextRow, c);
+            } else if (target == '.' && nextRow == board.getEnPassantRow()
+                    && c == board.getEnPassantCol()
+                    && row == (white ? 3 : 4)
+                    && board.getPiece(row, c) == (white ? 'p' : 'P')) {
+                moves.add(new Move(row, col, nextRow, c));
             }
         }
-
         return moves;
     }
 }
