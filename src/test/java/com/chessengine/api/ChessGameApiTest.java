@@ -62,6 +62,50 @@ public class ChessGameApiTest {
         assertTrue(moved.get("canUndo").asBoolean());
     }
 
+    @Test void moveSnapshotsMatchAuthoritativePositionAfterEachPly() throws Exception {
+        JsonNode start = create(true, 1);
+        String id = start.get("id").asText();
+        assertEquals(start.get("fen").asText(), start.get("initialFen").asText());
+
+        JsonNode white = move(id, "e2", "e4");
+        assertEquals(white.get("fen").asText(),
+                white.get("moveHistory").get(0).get("fen").asText());
+        assertEquals("e4", white.get("moveHistory").get(0).get("san").asText());
+
+        MvcResult response = mvc.perform(post("/api/games/{id}/ai", id))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode after = json.readTree(response.getResponse().getContentAsString());
+        assertEquals(2, after.get("moveHistory").size());
+        assertEquals(white.get("fen").asText(),
+                after.get("moveHistory").get(0).get("fen").asText());
+        assertEquals(after.get("fen").asText(),
+                after.get("moveHistory").get(1).get("fen").asText());
+        assertNotEquals(after.get("initialFen").asText(),
+                after.get("moveHistory").get(0).get("fen").asText());
+        assertNotEquals(after.get("moveHistory").get(0).get("fen").asText(),
+                after.get("moveHistory").get(1).get("fen").asText());
+        assertFalse(after.get("moveHistory").get(1).get("san").asText().isEmpty());
+    }
+
+    @Test void undoAndNewGamesDoNotLeakHistoricalPositions() throws Exception {
+        JsonNode start = create(true, 1);
+        String id = start.get("id").asText();
+        move(id, "d2", "d4");
+        mvc.perform(post("/api/games/{id}/ai", id)).andExpect(status().isOk());
+        MvcResult response = mvc.perform(post("/api/games/{id}/undo", id))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode undone = json.readTree(response.getResponse().getContentAsString());
+        assertEquals(0, undone.get("moveHistory").size());
+        assertEquals(undone.get("initialFen").asText(), undone.get("fen").asText());
+        JsonNode again = move(id, "e2", "e4");
+        assertEquals(1, again.get("moveHistory").size());
+        assertEquals("e4", again.get("moveHistory").get(0).get("san").asText());
+        assertEquals(again.get("fen").asText(), again.get("moveHistory").get(0).get("fen").asText());
+        JsonNode fresh = create(false, 1);
+        assertEquals(0, fresh.get("moveHistory").size());
+        assertEquals(fresh.get("initialFen").asText(), fresh.get("fen").asText());
+    }
+
     @Test void aiRespondsWithLegalMoveAndSearchStats() throws Exception {
         JsonNode state = create(true, 1);
         String id = state.get("id").asText();

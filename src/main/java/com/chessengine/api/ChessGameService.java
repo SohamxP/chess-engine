@@ -28,6 +28,7 @@ public class ChessGameService {
         final int depth;
         final Deque<Snapshot> history = new ArrayDeque<>();
         Game game = new Game();
+        final String initialFen = game.toFen();
         List<GameView.MoveEntry> moves = new ArrayList<>();
         GameView.AiStats aiStats;
 
@@ -155,7 +156,7 @@ public class ChessGameService {
         String san = StandardAlgebraicNotation.format(before, move, session.game);
         boolean white = !session.game.isWhiteToMove();
         session.moves.add(new GameView.MoveEntry(session.moves.size() + 1, white, aiMove,
-                GameView.MoveView.of(move).uci(), san));
+                GameView.MoveView.of(move).uci(), san, session.game.toFen()));
     }
 
     private static Move parseMove(String from, String to, String promotion) {
@@ -190,7 +191,7 @@ public class ChessGameService {
             last = new GameView.MoveView(uci.substring(0, 2), uci.substring(2, 4),
                     uci.length() == 5 ? uci.substring(4).toUpperCase() : null);
         }
-        return new GameView(session.id, game.toFen(), status.name(),
+        return new GameView(session.id, game.toFen(), session.initialFen, status.name(),
                 game.isWhiteToMove(), game.isInCheck(), session.humanWhite, session.depth,
                 aiTurn, session.history.stream().anyMatch(snapshot -> !snapshot.aiMove()),
                 game.canClaimThreefoldRepetition() && !aiTurn,

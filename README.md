@@ -118,3 +118,18 @@ checkmate, stalemate, repetition and move-count draws. AI uses fixed maximum
 search depth, iterative deepening, negamax, alpha-beta pruning, quiescence
 search, and a history-aware transposition table. Search is deterministic and
 does not alter the user's current game.
+
+### Drag moves and review history
+
+Move any of your pieces by clicking a piece and a highlighted destination, or
+by dragging and dropping it with a mouse, pen, or touch. Legal moves are still
+validated by Java; an invalid drag leaves the position unchanged. White and
+Black use solid chess-piece silhouettes with contrasting fills.
+
+The move list doubles as a **replay timeline**: click any SAN move to see the
+position *after* that move, including captures, promotion, castling, and en
+passant. Use **Left/Right arrow keys** or the timeline controls to step back
+and forward. **Live** returns to the actual ongoing game. Review mode is
+read-only; it never changes the game on the Java server. Undo still explicitly
+changes the live game state.
+
