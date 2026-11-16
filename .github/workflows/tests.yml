@@ -47,26 +47,12 @@ jobs:
           docker run -d --name openfile-chess-ci -p 127.0.0.1:18500:10000 openfile-chess:ci
           trap 'docker logs --tail 60 openfile-chess-ci; docker rm -f openfile-chess-ci' EXIT
           for attempt in $(seq 1 60); do
-            if curl --fail --silent http://127.0.0.1:18500/healthz | grep -q '^ok
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-debug
-          path: web/test-results
-          if-no-files-found: ignore
-; then
+            if curl --fail --silent http://127.0.0.1:18500/healthz | grep -q '^ok$'; then
               break
             fi
             sleep 2
           done
-          curl --fail --silent http://127.0.0.1:18500/healthz | grep -q '^ok
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-debug
-          path: web/test-results
-          if-no-files-found: ignore
-
+          curl --fail --silent http://127.0.0.1:18500/healthz | grep -q '^ok$'
           curl --fail --silent http://127.0.0.1:18500/ | grep -q 'OpenFile Chess'
           curl --fail --silent -X POST http://127.0.0.1:18500/api/games \
             -H 'Content-Type: application/json' \
