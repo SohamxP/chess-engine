@@ -13,3 +13,6 @@ build/
 # Environment files
 .env
 .env.*
+
+# Browser-only Stockfish engine, copied from npm at build time
+web/public/engine/

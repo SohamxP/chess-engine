@@ -161,3 +161,24 @@ docker build -t openfile-chess .
 docker run --rm -p 10000:10000 openfile-chess
 # Visit http://localhost:10000
 ```
+
+## Game Review (Stockfish Lite)
+
+The optional **Review game** panel analyzes a completed or in-progress game
+move-by-move in the browser using the **Stockfish 19 Lite single-threaded
+WebAssembly** engine (fixed depth 10). Analysis runs locally in a Web Worker,
+not on the Spring Boot service, and starts only when you request it.
+
+It provides an evaluation graph (from White's point of view), approximate move
+grades, and a recommended alternative for clearly problematic moves. The
+thresholds are heuristic, and **depth-10 evaluations are estimates, not
+authoritative chess assessments**. Long games analyze at most the first 120
+half-moves, with progress and a cancel option. Ending an analysis early retains
+the portion already evaluated. Games are not persisted across server restarts.
+
+**License:** Stockfish.js 19.0.1 is GNU GPLv3 software. The browser engine is
+distributed unmodified from the [stockfish npm package](https://www.npmjs.com/package/stockfish/v/19.0.1);
+matching sources, build instructions and COPYING are maintained in
+[the upstream Stockfish.js project](https://github.com/nmrugg/stockfish.js)
+and [Stockfish itself](https://github.com/official-stockfish/Stockfish).
+The engine is kept in a separate Web Worker and served as a local asset.
