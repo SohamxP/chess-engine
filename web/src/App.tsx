@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { api } from './api';
-import { analyzeGame, MAX_REVIEW_PLIES, REVIEW_DEPTH } from './analysis';
+import { analyzeGame, MAX_REVIEW_PLIES } from './analysis';
+import { GameReviewPage, type ReviewState } from './GameReviewPage';
+import { PlayerStrip } from './PlayerStrip';
 import {
-  analysisSummary, buildReviewedMoves, formatEvaluation, numericEvaluation,
-  type PositionEvaluation,
-} from './review';
-import {
-  frameAtPly, glyphs, isLightSquare, kingSquare, moveNotation, parseFen, resultScore,
-  squareOrder, statusLabel, stepHistory, type GameState, type LegalMove,
+  frameAtPly, glyphs, isLightSquare, kingSquare, parseFen, resultScore,
+  squareOrder, statusLabel, type GameState, type LegalMove,
 } from './chess';
 
 const levels = ['Easy', 'Medium', 'Hard'];
@@ -253,14 +251,30 @@ export default function App() {
   const [reviewPly, setReviewPly] = useState<number | null>(null);
   const mounted = useRef(false);
   const historyList = useRef<HTMLDivElement>(null);
+  const [onReview, setOnReview] = useState(
+    () => new URLSearchParams(window.location.search).has('review'));
+  const [initialReviewError, setInitialReviewError] = useState<string | null>(null);
   const reviewController = useRef<AbortController | null>(null);
-  const [review, setReview] = useState<{
-    gameId: string;
-    positions: PositionEvaluation[];
-    total: number;
-    running: boolean;
-    error: string | null;
-  } | null>(null);
+  const [review, setReview] = useState<ReviewState | null>(null);
+
+  function openReview(ply = 0) {
+    if (!game || busy) return;
+    setReviewPly(Math.max(0, Math.min(game.moveHistory.length, ply)));
+    setDismissedResult(game.id + ':' + game.status + ':' + game.moveHistory.length);
+    if (!onReview) {
+      window.history.pushState({}, '', '?review=' + encodeURIComponent(game.id));
+    }
+    setOnReview(true);
+    window.scrollTo(0, 0);
+  }
+
+  function returnToGame() {
+    if (reviewController.current) stopReview();
+    window.history.replaceState({}, '', window.location.pathname);
+    setOnReview(false);
+    setReviewPly(null);
+    window.scrollTo(0, 0);
+  }
 
   function clearReview() {
     reviewController.current?.abort();
@@ -358,8 +372,46 @@ export default function App() {
   useEffect(() => {
     if (mounted.current) return;
     mounted.current = true;
-    void newGame(true, 2);
+    const gameId = new URLSearchParams(window.location.search).get('review');
+    if (!gameId) {
+      void newGame(true, 2);
+      return;
+    }
+    setBusy(true);
+    void api.get(gameId).then(response => {
+      setGame(response);
+      setPlayAsWhite(response.humanWhite);
+      setDifficulty(response.depth);
+      setReviewPly(0);
+    }).catch(caught => {
+      setInitialReviewError(caught instanceof Error ? caught.message : 'Game could not be loaded.');
+    }).finally(() => setBusy(false));
   }, []);
+
+  useEffect(() => {
+    function handleNavigation() {
+      const gameId = new URLSearchParams(window.location.search).get('review');
+      if (!gameId) {
+        if (reviewController.current) {
+          reviewController.current.abort();
+          reviewController.current = null;
+          setReview(current => current?.running ? { ...current, running: false, error: 'Analysis stopped.' } : current);
+        }
+        setOnReview(false);
+        setReviewPly(null);
+      } else {
+        setOnReview(true);
+        setReviewPly(0);
+        if (game?.id !== gameId) {
+          void api.get(gameId).then(setGame).catch(caught => {
+            setInitialReviewError(caught instanceof Error ? caught.message : 'Game could not be loaded.');
+          });
+        }
+      }
+    }
+    window.addEventListener('popstate', handleNavigation);
+    return () => window.removeEventListener('popstate', handleNavigation);
+  }, [game?.id]);
 
   useEffect(() => {
     // Keep history scrolling inside its own panel. scrollIntoView on a child
@@ -370,28 +422,27 @@ export default function App() {
   }, [game?.moveHistory.length, reviewPly]);
 
   useEffect(() => {
-    const moveCount = game?.moveHistory.length ?? 0;
+    const count = game?.moveHistory.length ?? 0;
     function handleArrow(event: KeyboardEvent) {
       const left = event.key === 'ArrowLeft' || event.code === 'ArrowLeft';
       const right = event.key === 'ArrowRight' || event.code === 'ArrowRight';
       if ((!left && !right) || event.altKey || event.ctrlKey || event.metaKey
-          || moveCount === 0 || document.querySelector('[aria-label="Choose promotion piece"]')
+          || count === 0 || busy
+          || document.querySelector('[aria-label="Choose promotion piece"]')
           || document.querySelector('[aria-label="Confirm resignation"]')) return;
       const element = event.target instanceof HTMLElement ? event.target : null;
-      if (element?.isContentEditable ||
-          ['INPUT', 'TEXTAREA', 'SELECT'].includes(element?.tagName ?? '')) return;
-      // Result popups used to silently block both arrow keys. A navigation
-      // keystroke now dismisses the popup and opens read-only history.
+      if (element?.isContentEditable
+          || ['INPUT', 'TEXTAREA', 'SELECT'].includes(element?.tagName ?? '')) return;
       event.preventDefault();
-      if (game?.status !== 'IN_PROGRESS') {
-        setDismissedResult(game!.id + ':' + game!.status + ':' + moveCount);
+      if (!onReview) {
+        openReview(left ? Math.max(0, count - 1) : count);
+      } else {
+        setReviewPly(current => Math.max(0, Math.min(count, (current ?? count) + (left ? -1 : 1))));
       }
-      setReviewPly(cursor => stepHistory(cursor, moveCount, left ? -1 : 1));
     }
-    // Capture lets shortcuts work even when a move-list button has focus.
     window.addEventListener('keydown', handleArrow, { capture: true });
     return () => window.removeEventListener('keydown', handleArrow, { capture: true });
-  }, [game?.id, game?.status, game?.moveHistory.length]);
+  }, [game?.id, game?.status, game?.moveHistory.length, busy, onReview]);
 
   async function makeMove(move: LegalMove) {
     if (!game || busy || game.aiTurn) return;
@@ -487,27 +538,6 @@ export default function App() {
     return rows;
   }, [game?.moveHistory]);
 
-  const reviewedMoves = review && review.gameId === game?.id && game
-    ? buildReviewedMoves(game.moveHistory, review.positions) : [];
-  const summary = game ? analysisSummary(reviewedMoves, game.humanWhite) : {
-    blunders: 0, mistakes: 0, inaccuracies: 0,
-  };
-  const activeReviewPly = reviewPly ?? game?.moveHistory.length ?? 0;
-  const selectedReview = reviewedMoves.find(item => item.move.ply === activeReviewPly);
-  const flaggedMoves = reviewedMoves.filter(item =>
-    item.move.white === game?.humanWhite &&
-    (item.grade === 'Blunder' || item.grade === 'Mistake' || item.grade === 'Inaccuracy'));
-  const chartPoints = review?.positions.map((position, index) => {
-    const score = numericEvaluation(position);
-    if (score === null) return null;
-    return {
-      x: 8 + 304 * index / Math.max(1, review.total - 1),
-      y: 50 - Math.atan(score / 260) * 27,
-    };
-  }).filter((point): point is { x: number; y: number } => point !== null) ?? [];
-  const chartPath = chartPoints.map((point, index) =>
-    (index ? 'L' : 'M') + point.x.toFixed(1) + ' ' + point.y.toFixed(1)).join(' ');
-
   const status = game
     ? reviewPly !== null
       ? 'Reviewing move ' + reviewPly + ' of ' + game.moveHistory.length
@@ -515,8 +545,7 @@ export default function App() {
     : 'Connecting to engine';
   const score = game ? resultScore(game) : null;
   const resultKey = game ? game.id + ':' + game.status + ':' + game.moveHistory.length : null;
-  const showResult = Boolean(score && resultKey !== dismissedResult && !busy && !motion && reviewPly === null);
-  const engineSide = game?.humanWhite ? 'Black' : 'White';
+  const showResult = Boolean(score && !onReview && resultKey !== dismissedResult && !busy && !motion && reviewPly === null);
   const humanSide = game?.humanWhite ? 'White' : 'Black';
 
   return (
@@ -531,6 +560,24 @@ export default function App() {
         </div>
       </header>
 
+      {onReview ? (
+        game ? <GameReviewPage game={game} ply={reviewPly ?? game.moveHistory.length}
+          review={review} onSelect={setReviewPly} onBack={returnToGame}
+          onAnalyze={() => void startReview()} onStop={stopReview}
+          board={<ChessBoard game={game} busy={true} motion={null}
+            reviewPly={reviewPly ?? game.moveHistory.length} onMove={() => undefined} />} />
+          : <main className="main-content">
+              <div className="panel">
+                <h1>Game review unavailable</h1>
+                <p>{initialReviewError ?? 'Loading this game…'}</p>
+                <button type="button" className="btn-primary" onClick={() => {
+                  window.history.pushState({}, '', window.location.pathname);
+                  setOnReview(false);
+                  void newGame(true, 2);
+                }}>Start a new game</button>
+              </div>
+            </main>
+      ) : (
       <main className="main-content">
         <div className="intro">
           <div>
@@ -542,34 +589,20 @@ export default function App() {
 
         <div className="play-layout">
           <section className="board-column" aria-label="Chess match">
-            <div className="player-strip opponent-strip">
-              <div className="avatar engine-avatar" aria-hidden="true">♞</div>
-              <div className="player-details">
-                <strong>Computer</strong>
-                <span>{engineSide} · Java chess engine</span>
-              </div>
-              <span className="player-badge">{game?.aiTurn && thinking ? 'Thinking…' : engineSide}</span>
-            </div>
+            {game && <PlayerStrip game={game} player="computer"
+              ply={game.moveHistory.length} thinking={Boolean(game.aiTurn && thinking)} />}
 
             {game ? (
               <ChessBoard game={game} busy={busy}
-                motion={reviewPly === null ? motion : null}
-                reviewPly={reviewPly} onMove={move => void makeMove(move)} />
+                motion={motion} reviewPly={null} onMove={move => void makeMove(move)} />
             ) : (
               <div className="board-placeholder">Loading your board…</div>
             )}
 
-            <div className="player-strip human-strip">
-              <div className="avatar human-avatar" aria-hidden="true">♙</div>
-              <div className="player-details">
-                <strong>You</strong><span>Playing {humanSide}</span>
-              </div>
-              <span className="player-badge">{humanSide}</span>
-            </div>
+            {game && <PlayerStrip game={game} player="human"
+              ply={game.moveHistory.length} />}
             <p className="board-footnote">
-              {reviewPly === null
-                ? 'Click or drag a piece to move. Use ← → to review moves.'
-                : 'Reviewing a past position. Return to live to continue playing.'}
+              'Click or drag a piece to move. Open Game Review to inspect past positions.'
             </p>
           </section>
 
@@ -581,9 +614,7 @@ export default function App() {
                 <strong>{thinking ? 'Engine calculating...' : status}</strong>
               </div>
               <p className="status-description">
-                {reviewPly !== null
-                  ? 'Use the arrow keys or the move list to step through the game.'
-                  : thinking ? 'The computer is choosing its next move.' :
+                {thinking ? 'The computer is choosing its next move.' :
                     game?.status === 'IN_PROGRESS' ? 'You are playing ' + humanSide + '.' :
                       game ? 'The game is finished. You can review it or play again.' :
                         'Starting your match.'}
@@ -654,19 +685,10 @@ export default function App() {
             <section className="panel moves-panel">
               <div className="panel-heading"><h2>Moves</h2>
                 <span className="move-count">{game?.moveHistory.length ?? 0} MOVES</span></div>
-              <p className="history-help">Use the buttons or ← → keys to replay moves.</p>
-              <div className="history-navigation" aria-label="Move review controls">
-                <button type="button" aria-label="First position"
-                  onClick={() => setReviewPly(0)} disabled={!game || game.moveHistory.length === 0}>⟪</button>
-                <button type="button" aria-label="Previous move"
-                  onClick={() => setReviewPly(cursor => stepHistory(cursor, game?.moveHistory.length ?? 0, -1))}
-                  disabled={!game || (reviewPly === 0) || game.moveHistory.length === 0}>←</button>
-                <button type="button" aria-label="Next move"
-                  onClick={() => setReviewPly(cursor => stepHistory(cursor, game?.moveHistory.length ?? 0, 1))}
-                  disabled={!game || reviewPly === null}>→</button>
-                <button type="button" aria-label="Return to live position"
-                  onClick={() => setReviewPly(null)} disabled={reviewPly === null}>Live</button>
-              </div>
+              <p className="history-help">Select a move to open the dedicated review page.</p>
+              <button type="button" className="btn-secondary review-open-button"
+                disabled={!game?.moveHistory.length || busy}
+                onClick={() => openReview(0)}>Open Game Review</button>
               <div className="move-table-head">
                 <span>Move</span><span>White</span><span>Black</span>
               </div>
@@ -679,143 +701,20 @@ export default function App() {
                           (reviewPly === pair.white.ply ? 'review-selected' : '')}
                           aria-pressed={reviewPly === pair.white.ply}
                           aria-label={'View position after move ' + pair.white.ply + ': ' + pair.white.san}
-                          onClick={() => setReviewPly(pair.white!.ply)}>{pair.white.san}</button>
+                          onClick={() => openReview(pair.white!.ply)}>{pair.white.san}</button>
                       : <span>—</span>}
                     {pair.black
                       ? <button type="button" className={'move-entry ' +
                           (reviewPly === pair.black.ply ? 'review-selected' : '')}
                           aria-pressed={reviewPly === pair.black.ply}
                           aria-label={'View position after move ' + pair.black.ply + ': ' + pair.black.san}
-                          onClick={() => setReviewPly(pair.black!.ply)}>{pair.black.san}</button>
+                          onClick={() => openReview(pair.black!.ply)}>{pair.black.san}</button>
                       : <span>—</span>}
                   </div>
                 )) : <div className="no-moves">Moves will appear here as you play.</div>}
               </div>
             </section>
 
-
-            <section className="panel review-panel" aria-label="Game review">
-              <div className="panel-heading">
-                <h2>Game review</h2><span className="review-engine">Stockfish Lite</span>
-              </div>
-              <p className="review-description">
-                Find mistakes and stronger moves using optional, local browser analysis.
-                Evaluations are approximate at depth {REVIEW_DEPTH}.
-              </p>
-              <div className="review-actions">
-                {!review ? (
-                  <button type="button" className="btn-primary"
-                    disabled={!game?.moveHistory.length || busy}
-                    onClick={() => void startReview()}>Analyze game</button>
-                ) : review.running ? (
-                  <button type="button" className="btn-secondary"
-                    onClick={stopReview}>Stop analysis</button>
-                ) : (
-                  <button type="button" className="btn-secondary"
-                    disabled={!game?.moveHistory.length || busy}
-                    onClick={() => void startReview()}>Analyze again</button>
-                )}
-                {review && <button type="button" className="btn-secondary"
-                  onClick={() => setReviewPly(null)}>Live board</button>}
-              </div>
-              {!game?.moveHistory.length && (
-                <p className="review-description">Make a move to enable analysis.</p>
-              )}
-              {review && (
-                <>
-                  <p className="review-progress" role="status">
-                    {review.running
-                      ? 'Analyzed ' + review.positions.length + ' of ' + review.total + ' positions…'
-                      : review.error ?? ('Analyzed ' + review.positions.length + ' positions.')}
-                  </p>
-                  {review.running && <progress className="review-progress-bar"
-                    value={review.positions.length} max={review.total} />}
-                  {game && game.moveHistory.length > MAX_REVIEW_PLIES && (
-                    <p className="review-description">
-                      Only the first {MAX_REVIEW_PLIES} half-moves are analyzed to limit device load.
-                    </p>
-                  )}
-                  {review.positions.length > 0 && (
-                    <>
-                      <div className="review-summary">
-                        <div><strong>{summary.blunders}</strong><span>Blunders</span></div>
-                        <div><strong>{summary.mistakes}</strong><span>Mistakes</span></div>
-                        <div><strong>{summary.inaccuracies}</strong><span>Inaccuracies</span></div>
-                      </div>
-                      <div className="review-chart" aria-label="Evaluation graph">
-                        <div className="review-chart-heading">
-                          <span>Evaluation by move</span>
-                          <strong>{formatEvaluation(review.positions[activeReviewPly])}</strong>
-                        </div>
-                        <svg viewBox="0 0 320 100" width="100%" role="img"
-                          aria-label="Evaluation graph; above the middle favors White, below favors Black">
-                          <line x1="8" x2="312" y1="50" y2="50" stroke="#cbd3c8" strokeWidth="1" strokeDasharray="3 4" />
-                          <path d={chartPath} fill="none" stroke="#476b50" strokeWidth="2.5"
-                            strokeLinecap="round" strokeLinejoin="round" />
-                          {reviewPly !== null && activeReviewPly < review.positions.length && (
-                            <line x1={8 + 304 * activeReviewPly / Math.max(1, review.total - 1)}
-                              x2={8 + 304 * activeReviewPly / Math.max(1, review.total - 1)}
-                              y1="4" y2="96" stroke="#738378" strokeWidth="1" strokeDasharray="3 3" />
-                          )}
-                        </svg>
-                        <div className="review-chart-legend">
-                          <span>Black advantage ↓</span><span>White advantage ↑</span>
-                        </div>
-                      </div>
-                      <p className="review-description">
-                        Tap a move in the move list or below to inspect its position.
-                      </p>
-                      {selectedReview && (
-                        <div className="review-selected">
-                          <div className="review-selected-heading">
-                            <strong>
-                              {Math.ceil(selectedReview.move.ply / 2)}
-                              {selectedReview.move.white ? '. ' : '… '}
-                              {selectedReview.move.san}
-                            </strong>
-                            <span className={'review-grade grade-' + selectedReview.grade.toLowerCase()}>
-                              {selectedReview.grade}
-                            </span>
-                          </div>
-                          {selectedReview.betterMove && (
-                            <p>Stockfish preferred <strong>{moveNotation(selectedReview.betterMove)}</strong> instead.</p>
-                          )}
-                          {selectedReview.lossCp !== null && (
-                            <p>Estimated loss: {(selectedReview.lossCp / 100).toFixed(2)} pawns.</p>
-                          )}
-                        </div>
-                      )}
-                      <div className="review-flagged">
-                        <strong>Moves to revisit</strong>
-                        {flaggedMoves.length ? (
-                          <div className="review-flagged-list">
-                            {flaggedMoves.slice(0, 12).map(item => (
-                              <button type="button" key={item.move.ply}
-                                className={activeReviewPly === item.move.ply ? 'active' : ''}
-                                onClick={() => setReviewPly(item.move.ply)}>
-                                {Math.ceil(item.move.ply / 2)}
-                                {item.move.white ? '. ' : '… '}
-                                {item.move.san}
-                                <span>{item.grade}</span>
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="review-description">
-                            No significant errors detected in the analyzed moves so far.
-                          </p>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-              <p className="review-license">
-                Powered by <a href="https://github.com/nmrugg/stockfish.js"
-                  target="_blank" rel="noreferrer">Stockfish.js 19</a> (GPLv3).
-                Analysis runs on your device; no additional server analysis load.
-              </p>
-            </section>
 
             {game?.aiStats && (
               <section className="engine-info" aria-label="Last search">
@@ -830,6 +729,7 @@ export default function App() {
           </aside>
         </div>
       </main>
+      )}
 
       <footer className="site-footer">
         <span>OpenFile Chess</span><span>Built with Java and React</span>
@@ -863,13 +763,13 @@ export default function App() {
             </button>
             <button type="button" className="btn-secondary"
               onClick={() => {
-                setDismissedResult(resultKey);
+                openReview(0);
                 void startReview();
               }}>
               Analyze game
             </button>
             <button type="button" className="btn-secondary"
-              onClick={() => setDismissedResult(resultKey)}>
+              onClick={() => openReview(game.moveHistory.length)}>
               Review board
             </button>
           </div>

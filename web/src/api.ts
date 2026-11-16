@@ -19,6 +19,7 @@ async function request<T>(url: string, method: 'GET' | 'POST' | 'DELETE' = 'GET'
 }
 
 export const api = {
+  get: (id: string) => request<GameState>(`/api/games/${id}`),
   create: (playAsWhite: boolean, depth: number) => request<GameState>('/api/games', 'POST', { playAsWhite, depth }),
   move: (id: string, move: LegalMove) => request<GameState>(`/api/games/${id}/moves`, 'POST', move),
   ai: (id: string) => request<GameState>(`/api/games/${id}/ai`, 'POST'),

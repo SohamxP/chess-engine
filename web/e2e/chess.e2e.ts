@@ -62,6 +62,7 @@ test('promotion chooser sends the selected underpromotion (mocked near-promotion
   const game = {
     id: '00000000-0000-0000-0000-000000000001',
     fen: '7k/P7/8/8/8/8/8/4K3 w - - 0 1',
+    initialFen: '7k/P7/8/8/8/8/8/4K3 w - - 0 1',
     status: 'IN_PROGRESS',
     whiteToMove: true,
     inCheck: false,
@@ -94,7 +95,8 @@ test('promotion chooser sends the selected underpromotion (mocked near-promotion
         status: 'DRAW_INSUFFICIENT_MATERIAL',
         whiteToMove: false,
         legalMoves: [],
-        moveHistory: [{ ply: 1, white: true, ai: false, uci: 'a7a8n', san: 'a8=N' }],
+        moveHistory: [{ ply: 1, white: true, ai: false, uci: 'a7a8n', san: 'a8=N',
+          fen: 'N6k/8/8/8/8/8/8/4K3 b - - 0 1' }],
         lastMove: { from: 'a7', to: 'a8', promotion: 'N' },
       },
     });
@@ -278,7 +280,7 @@ test('game result dialog shows official scores for either winner and drawn games
     ['STALEMATE', false, '1/2-1/2'],
   ] as const) {
     data = { ...game, status, whiteToMove };
-    await page.reload();
+    await page.goto('/');
     await expect(page.getByRole('dialog', { name: 'Game result' })).toBeVisible();
     await expect(page.locator('.result-score')).toHaveText(expected);
     await page.getByRole('button', { name: 'Review board' }).click();
@@ -308,44 +310,41 @@ test('dragging a knight also uses legal engine moves rather than pawn-only logic
   await expect(page.locator('.move-pair .move-entry').first()).toHaveText('Nf3');
 });
 
-test('clicking SAN moves and using keyboard arrows reviews historic boards without changing the live game', async ({ page }) => {
+test('opening SAN history navigates to a dedicated review URL, and back preserves gameplay', async ({ page }) => {
   await expect(page.getByText('Your move', { exact: true })).toBeVisible();
   await board(page).getByRole('button', { name: /^e2 white p/ }).click();
   await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
   await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
 
   await page.getByRole('button', { name: 'View position after move 1: e4' }).click();
+  await expect(page).toHaveURL(/\?review=/);
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
+  // A direct reload retrieves the same session from the Java API.
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
+  await expect(board(page)).toHaveAttribute('data-review-ply', '0');
+  await page.getByRole('button', { name: 'View position after move 1: e4' }).click();
   await expect(board(page)).toHaveAttribute('data-review-ply', '1');
-  await expect(page.getByText('Reviewing move 1 of 2')).toBeVisible();
-  await expect(board(page).getByRole('button', { name: /^e4 white p/ })).toBeVisible();
-  // The opponent's first move should not yet exist in this historical board.
-  await expect(board(page).getByRole('button', { name: /^e7 black p/ })).toBeVisible();
   await expect(board(page).getByRole('button', { name: /^e4 white p/ })).toBeDisabled();
 
   await page.keyboard.press('ArrowLeft');
   await expect(board(page)).toHaveAttribute('data-review-ply', '0');
   await expect(board(page).getByRole('button', { name: /^e2 white p/ })).toBeVisible();
-  await expect(board(page).getByRole('button', { name: /^e4 empty/ })).toBeVisible();
-
   await page.keyboard.press('ArrowRight');
   await expect(board(page)).toHaveAttribute('data-review-ply', '1');
-  await expect(board(page).getByRole('button', { name: /^e4 white p/ })).toBeVisible();
-
   await page.keyboard.press('ArrowRight');
-  await expect(board(page)).toHaveAttribute('data-review-ply', 'live');
-  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
-  await expect(page.locator('.move-count')).toHaveText('2 MOVES');
+  await expect(board(page)).toHaveAttribute('data-review-ply', '2');
 
   await page.getByRole('button', { name: 'First position' }).click();
   await expect(board(page)).toHaveAttribute('data-review-ply', '0');
-  await page.getByRole('button', { name: 'Return to live position' }).click();
+  await page.getByRole('button', { name: 'Back to game' }).click();
+  await expect(page).not.toHaveURL(/\?review=/);
   await expect(board(page)).toHaveAttribute('data-review-ply', 'live');
-  // Browsing never played or undid moves on the authoritative server.
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
   await expect(page.locator('.move-count')).toHaveText('2 MOVES');
 });
 
-test('clicking a later white SAN move reviews its exact stored FEN snapshot', async ({ page }) => {
-  // Regression for selecting White's 20th move (39th half-move) in a long record.
+test('a later SAN move opens its exact historical position on the review page', async ({ page }) => {
   const opening = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
   const target = '4k3/8/8/4R3/8/8/8/4K3 b - - 1 20';
   const final = '4k3/8/8/4R3/8/8/8/3K4 w - - 2 21';
@@ -371,11 +370,12 @@ test('clicking a later white SAN move reviews its exact stored FEN snapshot', as
   await page.reload();
   await expect(page.locator('.move-count')).toHaveText('40 MOVES');
   await page.getByRole('button', { name: 'View position after move 39: Re5' }).click();
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
   await expect(board(page)).toHaveAttribute('data-review-ply', '39');
   await expect(board(page).getByRole('button', { name: /^e5 white r/ })).toBeVisible();
   await expect(board(page).getByRole('button', { name: /^e1 white k/ })).toBeVisible();
   await page.keyboard.press('ArrowRight');
-  await expect(board(page)).toHaveAttribute('data-review-ply', 'live');
+  await expect(board(page)).toHaveAttribute('data-review-ply', '40');
   await expect(board(page).getByRole('button', { name: /^d1 white k/ })).toBeVisible();
 });
 
@@ -427,8 +427,9 @@ test('resigning shows the correct game result and requires confirmation', async 
   await expect(page.getByRole('dialog', { name: 'Game result' })).toBeVisible();
   await expect(page.locator('.result-score')).toHaveText('0-1');
   await page.getByRole('button', { name: 'Review board' }).click();
-  await expect(page.getByText('Black wins · White resigned')).toBeVisible();
-  await expect(board(page).getByRole('button', { name: /^e2 white p/ })).toBeDisabled();
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
+  await expect(page.getByText('0-1', { exact: true })).toBeVisible();
+  await expect(board(page).getByRole('button', { name: /^e2 / })).toBeDisabled();
 });
 
 test('offering a draw can be declined and game continues without changing position', async ({ page }) => {
@@ -442,7 +443,7 @@ test('offering a draw can be declined and game continues without changing positi
   await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
 });
 
-test('arrow keys work when the result popup is open and when move buttons have focus', async ({ page }) => {
+test('arrow key from a completed-game popup opens the dedicated review page', async ({ page }) => {
   await expect(page.getByText('Your move', { exact: true })).toBeVisible();
   await board(page).getByRole('button', { name: /^e2 white p/ }).click();
   await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
@@ -451,9 +452,9 @@ test('arrow keys work when the result popup is open and when move buttons have f
   await page.getByRole('button', { name: 'Resign', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm resignation' }).click();
   await expect(page.getByRole('dialog', { name: 'Game result' })).toBeVisible();
-
   await page.keyboard.press('ArrowLeft');
   await expect(page.getByRole('dialog', { name: 'Game result' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
   await expect(board(page)).toHaveAttribute('data-review-ply', '1');
 
   await page.getByRole('button', { name: 'Previous move' }).click();
@@ -462,27 +463,64 @@ test('arrow keys work when the result popup is open and when move buttons have f
   await page.keyboard.press('ArrowRight');
   await expect(board(page)).toHaveAttribute('data-review-ply', '1');
   await page.getByRole('button', { name: 'Next move' }).click();
-  await expect(board(page)).toHaveAttribute('data-review-ply', 'live');
+  await expect(board(page)).toHaveAttribute('data-review-ply', '2');
 });
 
-
-test('game review runs local Stockfish analysis and shows move feedback', async ({ page }) => {
+test('dedicated page runs Stockfish and displays SAN feedback on mobile', async ({ page }) => {
   test.setTimeout(120_000);
+  await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByText('Your move', { exact: true })).toBeVisible();
   await board(page).getByRole('button', { name: /^e2 white p/ }).click();
   await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
   await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
 
-  const panel = page.getByRole('region', { name: 'Game review' });
-  await panel.getByRole('button', { name: 'Analyze game' }).click();
-  await expect(panel.getByRole('status')).toHaveText('Analyzed 3 positions.', { timeout: 95_000 });
-  await expect(panel.locator('.review-chart')).toBeVisible();
-  await expect(panel.locator('.review-summary')).toContainText('Blunders');
+  await page.getByRole('button', { name: 'Open Game Review' }).click();
+  const evaluation = page.getByRole('region', { name: 'Engine evaluation' });
+  await evaluation.getByRole('button', { name: 'Analyze game' }).click();
+  await expect(evaluation.getByRole('status')).toHaveText('Analyzed 3 positions.', { timeout: 95_000 });
+  await expect(evaluation.locator('.review-chart')).toBeVisible();
+  await expect(evaluation.locator('.review-summary')).toContainText('Blunders');
   await expect(board(page)).toHaveAttribute('data-review-ply', '0');
 
   await page.getByRole('button', { name: 'View position after move 1: e4' }).click();
   await expect(board(page)).toHaveAttribute('data-review-ply', '1');
-  await expect(panel.locator('.review-selected')).toContainText('e4');
-  await panel.getByRole('button', { name: 'Live board' }).click();
+  await expect(page.getByRole('region', { name: 'Selected move analysis' })).toContainText('e4');
+  expect(await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  await page.getByRole('button', { name: 'Back to game' }).click();
   await expect(board(page)).toHaveAttribute('data-review-ply', 'live');
+});
+
+
+
+test('captured pawn appears beneath player name and updates during SAN history review', async ({ page }) => {
+  const initial = '4k2r/8/8/8/4p3/8/P7/4R1K1 w - - 0 1';
+  const final = '4k2r/8/8/8/4R3/8/P7/6K1 b - - 0 1';
+  const game = {
+    id: '00000000-0000-0000-0000-000000000056',
+    fen: final, initialFen: initial, status: 'IN_PROGRESS',
+    whiteToMove: false, inCheck: true, humanWhite: true, depth: 1,
+    aiTurn: true, canUndo: true, canClaimThreefold: false, canClaimFifty: false,
+    legalMoves: [], moveHistory: [{ ply: 1, white: true, ai: false, uci: 'e1e4', san: 'Rxe4+', fen: final }],
+    lastMove: { from: 'e1', to: 'e4', promotion: null }, aiStats: null,
+  };
+  await page.route('**/api/games', async route => {
+    if (route.request().method() === 'POST') await route.fulfill({ status: 201, json: game });
+    else await route.continue();
+  });
+  await page.route('**/api/games/*/ai', route => route.fulfill({ status: 200, json: game }));
+  await page.reload();
+  await expect(page.getByLabel('You captured 1 pieces')).toContainText('♟\uFE0E');
+  await expect(page.getByLabel('You captured 1 pieces')).toContainText('+1');
+
+  // Game creation is still completing its mocked AI reply; wait until controls unlock.
+  await expect(page.getByRole('button', { name: 'Open Game Review' })).toBeEnabled();
+  await page.getByRole('button', { name: 'View position after move 1: Rxe4+' }).click();
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Review notation' })).toContainText('Rxe4+');
+  await expect(page.getByLabel('You captured 1 pieces')).toBeVisible();
+  await page.getByRole('button', { name: 'First position' }).click();
+  await expect(page.getByLabel('You captured 1 pieces')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Last position' }).click();
+  await expect(page.getByLabel('You captured 1 pieces')).toBeVisible();
 });

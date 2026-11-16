@@ -1,3 +1,4 @@
+import { Chess } from 'chess.js';
 import type { MoveEntry } from './chess';
 
 export interface PositionEvaluation {
@@ -93,4 +94,21 @@ export function analysisSummary(moves: ReviewedMove[], humanWhite: boolean): {
     mistakes: human.filter(item => item.grade === 'Mistake').length,
     inaccuracies: human.filter(item => item.grade === 'Inaccuracy').length,
   };
+}
+
+
+/** Render Stockfish's coordinate-based best move in the same SAN as the match history. */
+export function uciToSan(fen: string, uci: string): string | null {
+  if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(uci)) return null;
+  try {
+    const chess = new Chess(fen);
+    const played = chess.move({
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+      ...(uci.length === 5 ? { promotion: uci[4] } : {}),
+    });
+    return played.san;
+  } catch {
+    return null;
+  }
 }

@@ -182,3 +182,24 @@ matching sources, build instructions and COPYING are maintained in
 [the upstream Stockfish.js project](https://github.com/nmrugg/stockfish.js)
 and [Stockfish itself](https://github.com/official-stockfish/Stockfish).
 The engine is kept in a separate Web Worker and served as a local asset.
+
+
+## Dedicated Game Review and captured material
+
+Selecting **Open Game Review**, clicking a SAN move, or using a history arrow
+opens a **separate game review page** at `/?review=<game-id>`. The game stays on
+the same site, with a clear **Back to game** control. A direct review link also
+loads the existing server session. Because games are in-memory, review links
+stop working if the Render free instance restarts or the session is deleted.
+
+The review page keeps the chessboard and **SAN notation** together with move
+navigation, evaluation graph, move feedback, and a short list of mistakes.
+Stockfish alternatives are also shown in SAN (e.g. `Nf3`, `O-O`, `a8=Q+`)
+using [chess.js](https://github.com/jhlywa/chess.js) strictly for formatting;
+the Java backend remains the authority on actual gameplay.
+
+Both the game board and review board display **captured opponent pieces beneath
+each player's name**, sorted by type. A `+N` indicator denotes the player's
+current material lead (pawns=1, knights/bishops=3, rooks=5, queens=9).
+Captured pieces are reconstructed from the stored move/FEN history, so
+en-passant captures and promotions are handled without false capture counts.
