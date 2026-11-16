@@ -127,15 +127,16 @@ test('AI movement has readable pacing and a visible piece animation', async ({ p
   await expect(page.getByText('Your move', { exact: true })).toBeVisible();
 
   await board(page).getByRole('button', { name: /^e2 white p/ }).click();
+  const clickStarted = Date.now();
   await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
 
-  // The human move animates first; only the opponent's second flight should
-  // be subject to the readable response pause.
+  // First the human move travels for 420 ms. Only after it finishes does the
+  // AI start its minimum 700 ms visible pause, followed by its own flight.
+  // Measure from the initial click, not a late poll after the first animation.
   await expect(board(page)).toHaveAttribute('data-moving-to', 'e4');
   await expect(board(page)).toHaveAttribute('data-moving-to', '');
-  const aiWaitStarted = Date.now();
   await expect(page.locator('.piece-flight')).toBeVisible({ timeout: 45_000 });
-  expect(Date.now() - aiWaitStarted).toBeGreaterThanOrEqual(500);
+  expect(Date.now() - clickStarted).toBeGreaterThanOrEqual(1000);
   await expect(page.locator('.piece-flight')).toHaveCount(0);
   await expect(page.locator('.move-count')).toHaveText('2 MOVES');
   await expect(page.getByText('Your move', { exact: true })).toBeVisible();
