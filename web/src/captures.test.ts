@@ -21,7 +21,7 @@ describe('captured piece strips', () => {
     expect(capturedMaterial(game, 3)).toEqual({
       byWhite: ['p'], byBlack: [], advantage: 1,
     });
-    expect(capturedGlyph('p')).toBe('♟\\uFE0E');
+    expect(capturedGlyph('p')).toBe('♟\uFE0E');
   });
 
   it('detects en passant and never treats a promoting pawn as captured', () => {

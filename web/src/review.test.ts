@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   analysisSummary, buildReviewedMoves, formatEvaluation,
-  gradeMove, numericEvaluation, parseUciScore, type PositionEvaluation,
+  gradeMove, numericEvaluation, parseUciScore, uciToSan, type PositionEvaluation,
 } from './review';
 import type { MoveEntry } from './chess';
 
@@ -74,4 +74,19 @@ describe('Stockfish game review', () => {
     });
     expect(buildReviewedMoves(moves, scores.slice(0, 2))).toHaveLength(1);
   });
+
+  it('shows engine alternatives in the same SAN format as game history', () => {
+    expect(uciToSan('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'g1f3'))
+      .toBe('Nf3');
+    expect(uciToSan('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'e2e4'))
+      .toBe('e4');
+    expect(uciToSan('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1', 'e1g1'))
+      .toBe('O-O');
+    expect(uciToSan('4k3/P7/8/8/8/8/8/4K3 w - - 0 1', 'a7a8q'))
+      .toBe('a8=Q+');
+    expect(uciToSan('invalid', 'e2e4')).toBeNull();
+    expect(uciToSan('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'e2e5'))
+      .toBeNull();
+  });
+
 });
