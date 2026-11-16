@@ -126,20 +126,36 @@ test('mobile layout keeps the board usable without horizontal page overflow', as
 test('AI movement has readable pacing and a visible piece animation', async ({ page }) => {
   await expect(page.getByText('Your move', { exact: true })).toBeVisible();
 
-  await board(page).getByRole('button', { name: /^e2 white p/ }).click();
-  const clickStarted = Date.now();
-  await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
+  // Record DOM transitions instead of racing a 420 ms animation with
+  // Playwright polling. This observes both flights even on slow CI runners.
+  await page.evaluate(() => {
+    const w = window as Window & {
+      flightEvents?: Array<{ destination: string; at: number }>
+    };
+    w.flightEvents = [];
+    const element = document.querySelector('[aria-label="Interactive chess board"]');
+    if (!element) throw new Error('Chessboard was not rendered');
+    new MutationObserver(() => {
+      const destination = element.getAttribute('data-moving-to');
+      if (destination) w.flightEvents?.push({ destination, at: performance.now() });
+    }).observe(element, { attributes: true, attributeFilter: ['data-moving-to'] });
+  });
 
-  // First the human move travels for 420 ms. Only after it finishes does the
-  // AI start its minimum 700 ms visible pause, followed by its own flight.
-  // Measure from the initial click, not a late poll after the first animation.
-  await expect(board(page)).toHaveAttribute('data-moving-to', 'e4');
-  await expect(board(page)).toHaveAttribute('data-moving-to', '');
-  await expect(page.locator('.piece-flight')).toBeVisible({ timeout: 45_000 });
-  expect(Date.now() - clickStarted).toBeGreaterThanOrEqual(1000);
-  await expect(page.locator('.piece-flight')).toHaveCount(0);
-  await expect(page.locator('.move-count')).toHaveText('2 MOVES');
+  await board(page).getByRole('button', { name: /^e2 white p/ }).click();
+  await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
+  await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
   await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+
+  const flights = await page.evaluate(() =>
+    (window as Window & {
+      flightEvents?: Array<{ destination: string; at: number }>
+    }).flightEvents ?? []);
+  expect(flights).toHaveLength(2);
+  expect(flights[0].destination).toBe('e4');
+  expect(flights[1].destination).not.toBe('e4');
+  // Human travel (420ms) completes before the engine's concurrent 700ms
+  // calculation/presentation pause; the gap should exceed one second.
+  expect(flights[1].at - flights[0].at).toBeGreaterThanOrEqual(1000);
 });
 
 
