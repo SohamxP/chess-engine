@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: openfile-chess
+    runtime: docker
+    branch: main
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeployTrigger: checksPass

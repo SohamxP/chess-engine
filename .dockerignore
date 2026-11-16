@@ -1,0 +1,10 @@
+.git
+.gitignore
+**/node_modules
+**/dist
+**/target
+**/test-results
+**/playwright-report
+*.zip
+*.log
+.DS_Store
