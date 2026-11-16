@@ -18,7 +18,7 @@ test('plays against the real Java engine, records moves and undoes the turn', as
   // One move from White and a separate response from the actual Java search engine.
   await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
   await expect(board(page).getByRole('button', { name: /^e4 white p/ })).toBeVisible();
-  await expect(page.locator('.engine-stats')).toContainText('nodes');
+  await expect(page.locator('.engine-stats')).toContainText('Positions visited');
 
   await page.getByRole('button', { name: /Undo/ }).click();
   await expect(page.locator('.move-count')).toHaveText('0 MOVES');
@@ -41,7 +41,7 @@ test('switching sides starts a new match with Black at the bottom and AI opening
   await expect(page.locator('.move-count')).toHaveText('3 MOVES', { timeout: 45_000 });
   // The next White AI move can capture the e5 pawn, so check the move record,
   // not whether that pawn necessarily survives on its destination.
-  await expect(page.locator('.move-list')).toContainText('e7–e5');
+  await expect(page.locator('.move-list')).toContainText('e5');
 });
 
 test('new match resets the board after a completed human-and-AI turn', async ({ page }) => {
@@ -94,7 +94,7 @@ test('promotion chooser sends the selected underpromotion (mocked near-promotion
         status: 'DRAW_INSUFFICIENT_MATERIAL',
         whiteToMove: false,
         legalMoves: [],
-        moveHistory: [{ ply: 1, white: true, ai: false, uci: 'a7a8n' }],
+        moveHistory: [{ ply: 1, white: true, ai: false, uci: 'a7a8n', san: 'a8=N' }],
         lastMove: { from: 'a7', to: 'a8', promotion: 'N' },
       },
     });
@@ -107,6 +107,9 @@ test('promotion chooser sends the selected underpromotion (mocked near-promotion
   await expect(page.getByRole('dialog', { name: 'Choose promotion piece' })).toBeVisible();
   await page.getByRole('button', { name: 'Promote to N' }).click();
   await expect.poll(() => postedPromotion).toBe('N');
+  await expect(page.getByRole('dialog', { name: 'Game result' })).toBeVisible();
+  await expect(page.locator('.result-score')).toHaveText('1/2-1/2');
+  await page.getByRole('button', { name: 'Review board' }).click();
   await expect(board(page).getByRole('button', { name: /^a8 white n/ })).toBeVisible();
 });
 
@@ -123,15 +126,156 @@ test('mobile layout keeps the board usable without horizontal page overflow', as
 test('AI movement has readable pacing and a visible piece animation', async ({ page }) => {
   await expect(page.getByText('Your move', { exact: true })).toBeVisible();
 
-  await board(page).getByRole('button', { name: /^e2 white p/ }).click();
-  const moveStarted = Date.now();
-  await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
+  // Record DOM transitions instead of racing a 420 ms animation with
+  // Playwright polling. This observes both flights even on slow CI runners.
+  await page.evaluate(() => {
+    const w = window as Window & {
+      flightEvents?: Array<{ destination: string; at: number }>
+    };
+    w.flightEvents = [];
+    const element = document.querySelector('[aria-label="Interactive chess board"]');
+    if (!element) throw new Error('Chessboard was not rendered');
+    new MutationObserver(() => {
+      const destination = element.getAttribute('data-moving-to');
+      if (destination) w.flightEvents?.push({ destination, at: performance.now() });
+    }).observe(element, { attributes: true, attributeFilter: ['data-moving-to'] });
+  });
 
-  // AI search happens on the real Java server. It should still display a
-  // readable thinking interval before showing the piece's travel.
-  await expect(page.locator('.piece-flight')).toBeVisible({ timeout: 45_000 });
-  expect(Date.now() - moveStarted).toBeGreaterThanOrEqual(550);
-  await expect(page.locator('.piece-flight')).toHaveCount(0);
-  await expect(page.locator('.move-count')).toHaveText('2 MOVES');
+  await board(page).getByRole('button', { name: /^e2 white p/ }).click();
+  await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
+  await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
   await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+
+  const flights = await page.evaluate(() =>
+    (window as Window & {
+      flightEvents?: Array<{ destination: string; at: number }>
+    }).flightEvents ?? []);
+  expect(flights).toHaveLength(2);
+  expect(flights[0].destination).toBe('e4');
+  expect(flights[1].destination).not.toBe('e4');
+  // Human travel (420ms) completes before the engine's concurrent 700ms
+  // calculation/presentation pause; the gap should exceed one second.
+  expect(flights[1].at - flights[0].at).toBeGreaterThanOrEqual(1000);
+});
+
+
+test('move history uses standard algebraic notation from the real Java API', async ({ page }) => {
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+  await board(page).getByRole('button', { name: /^e2 white p/ }).click();
+  await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
+  await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
+  const first = page.locator('.move-pair').first();
+  await expect(first.locator('span').nth(1)).toHaveText('e4');
+  await expect(first.locator('span').nth(2)).not.toHaveText(/^[a-h][1-8][–-][a-h][1-8]$/);
+});
+
+test('captured piece remains on destination during flight and disappears on arrival', async ({ page }) => {
+  // Mock a tactical FEN to reliably reach a capture. The real Java engine is
+  // tested by the regular browser flows; only this precise visual state is stubbed.
+  const game = {
+    id: '00000000-0000-0000-0000-000000000021',
+    fen: '4k3/8/8/8/4q3/8/8/K3R3 w - - 0 1',
+    status: 'IN_PROGRESS',
+    whiteToMove: true,
+    inCheck: false,
+    humanWhite: true,
+    depth: 1,
+    aiTurn: false,
+    canUndo: false,
+    canClaimThreefold: false,
+    canClaimFifty: false,
+    legalMoves: [{ from: 'e1', to: 'e4', promotion: null }],
+    moveHistory: [],
+    lastMove: null,
+    aiStats: null,
+  };
+  await page.route('**/api/games', async route => {
+    if (route.request().method() === 'POST') await route.fulfill({ status: 201, json: game });
+    else await route.continue();
+  });
+  await page.route('**/api/games/*/moves', route => route.fulfill({
+    status: 200,
+    json: {
+      ...game,
+      fen: '4k3/8/8/8/4R3/8/8/K7 b - - 0 1',
+      whiteToMove: false,
+      aiTurn: true,
+      canUndo: true,
+      legalMoves: [],
+      moveHistory: [{ ply: 1, white: true, ai: false, uci: 'e1e4', san: 'Rxe4+' }],
+      lastMove: { from: 'e1', to: 'e4', promotion: null },
+    },
+  }));
+  await page.route('**/api/games/*/ai', async route => {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await route.fulfill({
+      status: 200,
+      json: {
+        ...game,
+        fen: '8/4k3/8/8/4R3/8/8/K7 w - - 1 2',
+        whiteToMove: true,
+        aiTurn: false,
+        canUndo: true,
+        legalMoves: [],
+        moveHistory: [
+          { ply: 1, white: true, ai: false, uci: 'e1e4', san: 'Rxe4+' },
+          { ply: 2, white: false, ai: true, uci: 'e8e7', san: 'Ke7' },
+        ],
+        lastMove: { from: 'e8', to: 'e7', promotion: null },
+      },
+    });
+  });
+  await page.reload();
+  await expect(board(page).getByRole('button', { name: /^e1 white r/ })).toBeVisible();
+  await board(page).getByRole('button', { name: /^e1 white r/ }).click();
+  await board(page).getByRole('button', { name: /^e4 black q, legal destination/ }).click();
+
+  await expect(page.locator('.piece-flight')).toBeVisible();
+  await expect(board(page)).toHaveAttribute('data-moving-to', 'e4');
+  await expect(board(page).getByRole('button', { name: /^e4 black q/ })).toBeVisible();
+  await expect(board(page).getByRole('button', { name: /^e1 white r/ }).locator('.piece'))
+    .toHaveCSS('visibility', 'hidden');
+
+  await expect(board(page).getByRole('button', { name: /^e4 white r/ })).toBeVisible();
+  await expect(board(page).getByRole('button', { name: /^e4 black q/ })).toHaveCount(0);
+  await expect(page.locator('.move-pair').first()).toContainText('Rxe4+');
+});
+
+test('game result dialog shows official scores for either winner and drawn games', async ({ page }) => {
+  const game = {
+    id: '00000000-0000-0000-0000-000000000022',
+    fen: '7k/6Q1/5K2/8/8/8/8/8 b - - 0 1',
+    status: 'CHECKMATE',
+    whiteToMove: false,
+    inCheck: true,
+    humanWhite: true,
+    depth: 1,
+    aiTurn: false,
+    canUndo: false,
+    canClaimThreefold: false,
+    canClaimFifty: false,
+    legalMoves: [],
+    moveHistory: [],
+    lastMove: null,
+    aiStats: null,
+  };
+  let data = game;
+  await page.route('**/api/games', async route => {
+    if (route.request().method() === 'POST') await route.fulfill({ status: 201, json: data });
+    else await route.continue();
+  });
+
+  for (const [status, whiteToMove, expected] of [
+    ['CHECKMATE', false, '1-0'],
+    ['CHECKMATE', true, '0-1'],
+    ['STALEMATE', false, '1/2-1/2'],
+  ] as const) {
+    data = { ...game, status, whiteToMove };
+    await page.reload();
+    await expect(page.getByRole('dialog', { name: 'Game result' })).toBeVisible();
+    await expect(page.locator('.result-score')).toHaveText(expected);
+    await page.getByRole('button', { name: 'Review board' }).click();
+    await expect(page.getByRole('dialog', { name: 'Game result' })).toHaveCount(0);
+    await expect(board(page).getByRole('button')).toHaveCount(64);
+  }
 });

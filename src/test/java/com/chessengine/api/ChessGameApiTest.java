@@ -57,6 +57,7 @@ public class ChessGameApiTest {
         assertFalse(moved.get("whiteToMove").asBoolean());
         assertEquals(0, moved.get("legalMoves").size());
         assertEquals("e2e4", moved.get("moveHistory").get(0).get("uci").asText());
+        assertEquals("e4", moved.get("moveHistory").get(0).get("san").asText());
         assertEquals("e2", moved.get("lastMove").get("from").asText());
         assertTrue(moved.get("canUndo").asBoolean());
     }

@@ -149,9 +149,13 @@ public class ChessGameService {
     }
 
     private static void addMove(Session session, Move move, boolean aiMove) {
-        boolean white = !session.game.isWhiteToMove(); // the mover
+        // The pre-move snapshot contains the legally reachable alternatives
+        // required to disambiguate SAN (e.g. Nbd2 rather than Nd2).
+        Game before = session.history.peek().game();
+        String san = StandardAlgebraicNotation.format(before, move, session.game);
+        boolean white = !session.game.isWhiteToMove();
         session.moves.add(new GameView.MoveEntry(session.moves.size() + 1, white, aiMove,
-                GameView.MoveView.of(move).uci()));
+                GameView.MoveView.of(move).uci(), san));
     }
 
     private static Move parseMove(String from, String to, String promotion) {

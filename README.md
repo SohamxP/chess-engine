@@ -40,12 +40,20 @@ entire human/AI turn, claim eligible draws, and start a new match. The board
 flips when you play Black. Pawn promotion supports Queen, Rook, Bishop or Knight.
 When playing Black, the engine makes the opening move first.
 
-The browser sends the human move, displays it immediately, then requests the
-engine reply independently. AI replies have a minimum 700 ms visible pause
-and a 420 ms piece-movement animation, including when playing Black.
-The pause runs concurrently with computation, so it does not artificially
-slow the Java search. If a reply fails, use **Retry engine move**; the
-game remains stored in the Java process.
+The browser sends the human move to Java, then animates it on the board.
+**Both human and computer captures resolve on arrival:** the captured piece
+remains visible until the moving piece reaches its square. The computer's
+reply has a minimum 700 ms presentation pause, concurrent with search,
+followed by a 420 ms piece animation. Reduced-motion users see the updated
+board immediately, without the movement animation.
+
+The move log displays **FIDE standard algebraic notation** (e.g. `e4`,
+`Nf3`, `Rxe4+`, `O-O`, `Qg7#`). The backend also retains UCI
+coordinates for machine-readable clients. A completed game displays the
+official result (`1-0`, `0-1`, or `1/2-1/2`) in a dismissible dialog.
+
+If a computer reply fails, use **Retry engine move**; the game remains
+stored in the Java process.
 
 ## REST API
 

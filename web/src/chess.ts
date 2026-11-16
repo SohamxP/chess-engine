@@ -11,6 +11,7 @@ export interface MoveEntry {
   white: boolean;
   ai: boolean;
   uci: string;
+  san: string;
 }
 
 export interface AiStats {
@@ -111,4 +112,12 @@ export function uciFor(move: LegalMove): string {
 
 export function kingSquare(board: BoardMap, white: boolean): string | null {
   return Object.entries(board).find(([, piece]) => piece === (white ? 'K' : 'k'))?.[0] ?? null;
+}
+
+/** Final game scores use the traditional chess result format. */
+export function resultScore(game: Pick<GameState, 'status' | 'whiteToMove'>): string | null {
+  if (game.status === 'IN_PROGRESS') return null;
+  if (game.status === 'CHECKMATE') return game.whiteToMove ? '0-1' : '1-0';
+  if (game.status.startsWith('DRAW_') || game.status === 'STALEMATE') return '1/2-1/2';
+  return null;
 }
