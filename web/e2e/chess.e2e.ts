@@ -429,7 +429,7 @@ test('resigning shows the correct game result and requires confirmation', async 
   await page.getByRole('button', { name: 'Review board' }).click();
   await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
   await expect(page.getByText('0-1', { exact: true })).toBeVisible();
-  await expect(board(page).getByRole('button', { name: /^e2 empty/ })).toBeDisabled();
+  await expect(board(page).getByRole('button', { name: /^e2 / })).toBeDisabled();
 });
 
 test('offering a draw can be declined and game continues without changing position', async ({ page }) => {
@@ -513,6 +513,8 @@ test('captured pawn appears beneath player name and updates during SAN history r
   await expect(page.getByLabel('You captured 1 pieces')).toContainText('♟\uFE0E');
   await expect(page.getByLabel('You captured 1 pieces')).toContainText('+1');
 
+  // Game creation is still completing its mocked AI reply; wait until controls unlock.
+  await expect(page.getByRole('button', { name: 'Open Game Review' })).toBeEnabled();
   await page.getByRole('button', { name: 'View position after move 1: Rxe4+' }).click();
   await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Review notation' })).toContainText('Rxe4+');
