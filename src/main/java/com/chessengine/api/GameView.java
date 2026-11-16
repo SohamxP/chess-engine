@@ -24,6 +24,9 @@ public record GameView(
         MoveView lastMove,
         AiStats aiStats) {
 
+    /** Offer result; a declined offer must leave the game in progress. */
+    public record DrawOfferResponse(GameView game, boolean accepted, String message) { }
+
     public record MoveView(String from, String to, String promotion) {
         public static MoveView of(Move move) {
             return new MoveView(square(move.getFromRow(), move.getFromCol()),

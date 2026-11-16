@@ -43,6 +43,14 @@ public class ChessGameController {
     @PostMapping("/{id}/ai")
     public GameView ai(@PathVariable UUID id) { return service.aiMove(id); }
 
+    @PostMapping("/{id}/resign")
+    public GameView resign(@PathVariable UUID id) { return service.resign(id); }
+
+    @PostMapping("/{id}/offers/draw")
+    public GameView.DrawOfferResponse offerDraw(@PathVariable UUID id) {
+        return service.offerDraw(id);
+    }
+
     @PostMapping("/{id}/undo")
     public GameView undo(@PathVariable UUID id) { return service.undo(id); }
 
