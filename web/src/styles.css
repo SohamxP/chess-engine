@@ -247,3 +247,36 @@ button:focus-visible, a:focus-visible {
 .resign-action:hover:not(:disabled) { background: #f9eeeb; }
 .game-notice { padding: 10px 12px; margin-bottom: 14px; border: 1px solid #bfd1bb; background: #f3f8f0; color: #36513b; border-radius: 5px; font-size: 13px; }
 .history-help { font-size: 12px; color: #707c72; margin: 13px 0 -5px; }
+
+
+/* Local Stockfish review: readable on phones, without a second board. */
+.review-engine { color: #607462; font-size: 11px; font-weight: 650; }
+.review-description { color: #6f7a70; font-size: 12px; line-height: 1.55; margin: 12px 0; }
+.review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 10px; }
+.review-actions button { min-height: 38px; flex: 1 1 auto; }
+.review-progress { font-size: 12px; color: #385945; font-weight: 600; margin: 14px 0 7px; }
+.review-progress-bar { display: block; width: 100%; accent-color: #53785d; }
+.review-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 15px 0; }
+.review-summary > div { border: 1px solid #e4e9e1; border-radius: 5px; padding: 11px 5px; background: #f7f8f4; display: flex; align-items: center; flex-direction: column; gap: 2px; }
+.review-summary strong { font-size: 19px; color: #324a39; font-variant-numeric: tabular-nums; }
+.review-summary span { color: #778078; font-size: 10px; }
+.review-chart { border: 1px solid #e3e8df; border-radius: 6px; padding: 12px 11px 5px; background: #fcfdfb; }
+.review-chart-heading, .review-chart-legend { display: flex; justify-content: space-between; gap: 8px; align-items: center; color: #758077; font-size: 11px; }
+.review-chart-heading strong { color: #314936; font-variant-numeric: tabular-nums; font-size: 14px; }
+.review-chart svg { display: block; width: 100%; height: auto; margin-top: 4px; }
+.review-chart-legend { font-size: 10px; margin-bottom: 6px; }
+.review-selected { background: #f2f6f0; border: 1px solid #dae5d7; border-radius: 6px; padding: 12px; margin-top: 12px; }
+.review-selected-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
+.review-selected p { font-size: 12px; color: #526355; line-height: 1.45; margin: 9px 0 0; }
+.review-grade { padding: 4px 7px; border-radius: 4px; background: #e4eae0; color: #426049; font-size: 10px; font-weight: 700; }
+.grade-blunder, .grade-mistake { background: #f6e1dc; color: #933d32; }
+.grade-inaccuracy { background: #f8eed6; color: #936e24; }
+.grade-unrated { background: #eaeeea; color: #6c766e; }
+.review-flagged { margin-top: 17px; }
+.review-flagged > strong { font-size: 13px; }
+.review-flagged-list { display: flex; flex-direction: column; gap: 6px; margin-top: 9px; }
+.review-flagged-list button { display: flex; justify-content: space-between; text-align: left; gap: 14px; padding: 9px 10px; color: #38473c; background: #fafbf8; border: 1px solid #e1e6dc; border-radius: 5px; font-size: 12px; }
+.review-flagged-list button.active { background: #e2eddd; border-color: #8daa90; }
+.review-flagged-list button span { color: #8f4937; font-size: 11px; }
+.review-license { font-size: 10px; line-height: 1.5; color: #8a9289; margin: 17px 0 0; }
+.review-license a { text-decoration: underline; }
