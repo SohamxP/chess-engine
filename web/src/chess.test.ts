@@ -1,10 +1,60 @@
 import { describe, expect, it } from 'vitest';
 import {
   isLightSquare, kingSquare, moveNotation, parseFen, squareOrder,
-  startingFen, statusLabel, resultScore, uciFor, type GameState,
+  startingFen, statusLabel, resultScore, uciFor, glyphs, frameAtPly, stepHistory, type GameState,
 } from './chess';
 
 describe('chess UI board helpers', () => {
+  it('uses filled silhouettes for both white and black pieces', () => {
+    expect(glyphs.K).toBe(glyphs.k);
+    expect(glyphs.Q).toBe(glyphs.q);
+    expect(glyphs.R).toBe(glyphs.r);
+    expect(glyphs.B).toBe(glyphs.b);
+    expect(glyphs.N).toBe(glyphs.n);
+    expect(glyphs.P).toBe(glyphs.p);
+    expect(glyphs.K).toBe('♚');
+    expect(glyphs.P).toBe('♟');
+  });
+
+  it('reconstructs historic boards exactly from FEN records', () => {
+    const one = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+    const two = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2';
+    const game = {
+      fen: two, initialFen: startingFen, inCheck: false, lastMove: { from: 'e7', to: 'e5', promotion: null },
+      moveHistory: [
+        { ply: 1, white: true, ai: false, uci: 'e2e4', san: 'e4', fen: one },
+        { ply: 2, white: false, ai: true, uci: 'e7e5', san: 'e5', fen: two },
+      ],
+    } as GameState;
+    expect(frameAtPly(game, 0).fen).toBe(startingFen);
+    expect(frameAtPly(game, 0).lastMove).toBeNull();
+    expect(frameAtPly(game, 1).fen).toBe(one);
+    expect(frameAtPly(game, 1).lastMove?.from).toBe('e2');
+    expect(frameAtPly(game, 2).fen).toBe(two);
+    expect(frameAtPly(game, null).fen).toBe(two);
+    expect(() => frameAtPly(game, 3)).toThrow(RangeError);
+    expect(stepHistory(null, 2, -1)).toBe(1);
+    expect(stepHistory(1, 2, -1)).toBe(0);
+    expect(stepHistory(0, 2, -1)).toBe(0);
+    expect(stepHistory(0, 2, 1)).toBe(1);
+    expect(stepHistory(1, 2, 1)).toBeNull();
+    expect(stepHistory(null, 2, 1)).toBeNull();
+  });
+
+  it('replays promotions, checking moves, and en-passant using stored snapshots', () => {
+    const initial = '4k3/P7/8/8/8/8/8/4K3 w - - 0 1';
+    const promoted = 'Q3k3/8/8/8/8/8/8/4K3 b - - 0 1';
+    const game = {
+      initialFen: initial, fen: promoted,
+      moveHistory: [{ply: 1, white: true, ai: false, uci: 'a7a8q', san: 'a8=Q+', fen: promoted}],
+    } as GameState;
+    const replay = frameAtPly(game, 1);
+    expect(replay.fen).toBe(promoted);
+    expect(replay.inCheck).toBe(true);
+    expect(replay.lastMove?.promotion).toBe('Q');
+    expect(frameAtPly(game, 0).fen).toBe(initial);
+  });
+
   it('places kings and queens on their correct starting squares', () => {
     const board = parseFen(startingFen);
     expect(board.e1).toBe('K');

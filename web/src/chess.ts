@@ -12,6 +12,7 @@ export interface MoveEntry {
   ai: boolean;
   uci: string;
   san: string;
+  fen: string;
 }
 
 export interface AiStats {
@@ -26,6 +27,7 @@ export interface AiStats {
 export interface GameState {
   id: string;
   fen: string;
+  initialFen: string;
   status: string;
   whiteToMove: boolean;
   inCheck: boolean;
@@ -46,8 +48,9 @@ export const files = 'abcdefgh';
 export const ranks = '87654321';
 export const startingFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 export const glyphs: Record<string, string> = {
-  K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙',
-  k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟︎',
+  // Use filled glyphs for both sides; CSS makes White ivory and Black charcoal.
+  K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟',
+  k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟',
 };
 
 /** Parse only placement; Java remains authoritative for chess legality. */
@@ -120,4 +123,38 @@ export function resultScore(game: Pick<GameState, 'status' | 'whiteToMove'>): st
   if (game.status === 'CHECKMATE') return game.whiteToMove ? '0-1' : '1-0';
   if (game.status.startsWith('DRAW_') || game.status === 'STALEMATE') return '1/2-1/2';
   return null;
+}
+
+/** A zero-based history cursor: 0 = initial, n = board after ply n.
+ * null means "live" and tracks the authoritative game as it advances.
+ * The server stores full FEN snapshots, so replay never re-applies moves. */
+export function frameAtPly(game: GameState, ply: number | null): {
+  fen: string; lastMove: LegalMove | null; inCheck: boolean;
+} {
+  if (ply === null) return {
+    fen: game.fen, lastMove: game.lastMove, inCheck: game.inCheck,
+  };
+  if (!Number.isInteger(ply) || ply < 0 || ply > game.moveHistory.length)
+    throw new RangeError('Move number is outside recorded game history');
+  if (ply === 0) return {
+    fen: game.initialFen ?? startingFen, lastMove: null, inCheck: false,
+  };
+  const entry = game.moveHistory[ply - 1];
+  const uci = entry.uci;
+  return {
+    fen: entry.fen,
+    lastMove: {
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+      promotion: uci.length > 4 ? uci.slice(4).toUpperCase() : null,
+    },
+    inCheck: entry.san.endsWith('+') || entry.san.endsWith('#'),
+  };
+}
+
+/** Clamps navigation safely when a game gains or loses moves. */
+export function stepHistory(cursor: number | null, count: number, delta: -1 | 1): number | null {
+  const current = cursor === null ? count : Math.min(cursor, count);
+  const next = Math.max(0, Math.min(count, current + delta));
+  return next === count ? null : next;
 }
