@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isLightSquare, kingSquare, moveNotation, parseFen, squareOrder,
-  startingFen, statusLabel, uciFor, type GameState,
+  startingFen, statusLabel, resultScore, uciFor, type GameState,
 } from './chess';
 
 describe('chess UI board helpers', () => {
@@ -54,6 +54,15 @@ describe('chess UI board helpers', () => {
     const game = { status: 'CHECKMATE', whiteToMove: true } as GameState;
     expect(statusLabel(game)).toContain('Black wins');
     expect(statusLabel({ ...game, whiteToMove: false })).toContain('White wins');
+  });
+
+  it('uses official result scores for mate and draws', () => {
+    expect(resultScore({ status: 'IN_PROGRESS', whiteToMove: true })).toBeNull();
+    expect(resultScore({ status: 'CHECKMATE', whiteToMove: false })).toBe('1-0');
+    expect(resultScore({ status: 'CHECKMATE', whiteToMove: true })).toBe('0-1');
+    expect(resultScore({ status: 'STALEMATE', whiteToMove: true })).toBe('1/2-1/2');
+    expect(resultScore({ status: 'DRAW_THREEFOLD_REPETITION', whiteToMove: false })).toBe('1/2-1/2');
+    expect(resultScore({ status: 'DRAW_INSUFFICIENT_MATERIAL', whiteToMove: true })).toBe('1/2-1/2');
   });
 
   it('reports status and draw reasons', () => {
