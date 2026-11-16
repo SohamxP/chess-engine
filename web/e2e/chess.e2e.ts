@@ -18,7 +18,7 @@ test('plays against the real Java engine, records moves and undoes the turn', as
   // One move from White and a separate response from the actual Java search engine.
   await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
   await expect(board(page).getByRole('button', { name: /^e4 white p/ })).toBeVisible();
-  await expect(page.locator('.engine-stats')).toContainText('nodes');
+  await expect(page.locator('.engine-stats')).toContainText('Positions visited');
 
   await page.getByRole('button', { name: /Undo/ }).click();
   await expect(page.locator('.move-count')).toHaveText('0 MOVES');
@@ -127,13 +127,15 @@ test('AI movement has readable pacing and a visible piece animation', async ({ p
   await expect(page.getByText('Your move', { exact: true })).toBeVisible();
 
   await board(page).getByRole('button', { name: /^e2 white p/ }).click();
-  const moveStarted = Date.now();
   await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
 
-  // AI search happens on the real Java server. It should still display a
-  // readable thinking interval before showing the piece's travel.
+  // The human move animates first; only the opponent's second flight should
+  // be subject to the readable response pause.
+  await expect(board(page)).toHaveAttribute('data-moving-to', 'e4');
+  await expect(board(page)).toHaveAttribute('data-moving-to', '');
+  const aiWaitStarted = Date.now();
   await expect(page.locator('.piece-flight')).toBeVisible({ timeout: 45_000 });
-  expect(Date.now() - moveStarted).toBeGreaterThanOrEqual(550);
+  expect(Date.now() - aiWaitStarted).toBeGreaterThanOrEqual(500);
   await expect(page.locator('.piece-flight')).toHaveCount(0);
   await expect(page.locator('.move-count')).toHaveText('2 MOVES');
   await expect(page.getByText('Your move', { exact: true })).toBeVisible();
