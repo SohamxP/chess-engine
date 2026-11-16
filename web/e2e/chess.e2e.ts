@@ -39,7 +39,9 @@ test('switching sides starts a new match with Black at the bottom and AI opening
   await board(page).getByRole('button', { name: /^e7 black p/ }).click();
   await board(page).getByRole('button', { name: /^e5 empty, legal destination/ }).click();
   await expect(page.locator('.move-count')).toHaveText('3 MOVES', { timeout: 45_000 });
-  await expect(board(page).getByRole('button', { name: /^e5 black p/ })).toBeVisible();
+  // The next White AI move can capture the e5 pawn, so check the move record,
+  // not whether that pawn necessarily survives on its destination.
+  await expect(page.locator('.move-list')).toContainText('e7–e5');
 });
 
 test('new match resets the board after a completed human-and-AI turn', async ({ page }) => {
