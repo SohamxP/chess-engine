@@ -5,7 +5,7 @@ import { GameReviewPage, type ReviewState } from './GameReviewPage';
 import { PlayerStrip } from './PlayerStrip';
 import {
   frameAtPly, glyphs, isLightSquare, kingSquare, parseFen, resultScore,
-  squareOrder, statusLabel, stepHistory, type GameState, type LegalMove,
+  squareOrder, statusLabel, type GameState, type LegalMove,
 } from './chess';
 
 const levels = ['Easy', 'Medium', 'Hard'];
@@ -270,7 +270,7 @@ export default function App() {
 
   function returnToGame() {
     if (reviewController.current) stopReview();
-    window.history.pushState({}, '', window.location.pathname);
+    window.history.replaceState({}, '', window.location.pathname);
     setOnReview(false);
     setReviewPly(null);
     window.scrollTo(0, 0);
@@ -392,7 +392,11 @@ export default function App() {
     function handleNavigation() {
       const gameId = new URLSearchParams(window.location.search).get('review');
       if (!gameId) {
-        if (reviewController.current) reviewController.current.abort();
+        if (reviewController.current) {
+          reviewController.current.abort();
+          reviewController.current = null;
+          setReview(current => current?.running ? { ...current, running: false, error: 'Analysis stopped.' } : current);
+        }
         setOnReview(false);
         setReviewPly(null);
       } else {
@@ -542,7 +546,6 @@ export default function App() {
   const score = game ? resultScore(game) : null;
   const resultKey = game ? game.id + ':' + game.status + ':' + game.moveHistory.length : null;
   const showResult = Boolean(score && !onReview && resultKey !== dismissedResult && !busy && !motion && reviewPly === null);
-  const engineSide = game?.humanWhite ? 'Black' : 'White';
   const humanSide = game?.humanWhite ? 'White' : 'Black';
 
   return (

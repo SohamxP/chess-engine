@@ -1,4 +1,4 @@
-import { frameAtPly, glyphs, parseFen, startingFen, type GameState } from './chess';
+import { glyphs, parseFen, startingFen, type GameState } from './chess';
 
 export interface CapturedMaterial {
   /** Pieces taken by White (Black pieces), ordered by value. */
@@ -22,7 +22,7 @@ export function capturedMaterial(game: GameState, ply: number = game.moveHistory
   const byWhite: string[] = [], byBlack: string[] = [];
   let previous = parseFen(game.initialFen || startingFen);
 
-  for (const entry of game.moveHistory.slice(0, count)) {
+  for (const [index, entry] of game.moveHistory.slice(0, count).entries()) {
     const from = entry.uci.slice(0, 2), to = entry.uci.slice(2, 4);
     const moving = previous[from];
     let captured = previous[to];
@@ -35,10 +35,10 @@ export function capturedMaterial(game: GameState, ply: number = game.moveHistory
       && (captured === captured.toUpperCase()) !== entry.white) {
       (entry.white ? byWhite : byBlack).push(captured);
     }
-    previous = parseFen(entry.fen);
+    previous = parseFen(entry.fen || (index === game.moveHistory.length - 1 ? game.fen : game.initialFen || startingFen));
   }
 
-  const board = parseFen(frameAtPly(game, count).fen);
+  const board = previous;
   let advantage = 0;
   for (const piece of Object.values(board)) {
     const value = values[piece.toLowerCase()] ?? 0;
