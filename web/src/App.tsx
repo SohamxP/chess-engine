@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { api } from './api';
 import {
   glyphs, isLightSquare, kingSquare, moveNotation,
@@ -8,9 +8,18 @@ import {
 const levelNames = ['Easy', 'Medium', 'Hard'];
 const promotionPieces = ['Q', 'R', 'B', 'N'];
 
-function ChessBoard({ game, busy, onMove }: {
+// Pacing affects presentation only; the Java search is never artificially slowed.
+const MIN_ENGINE_RESPONSE_MS = 700;
+const PIECE_TRAVEL_MS = 420;
+
+type PieceMotion = { from: string; to: string; piece: string };
+const pause = (duration: number): Promise<void> =>
+  new Promise(resolve => window.setTimeout(resolve, duration));
+
+function ChessBoard({ game, busy, motion, onMove }: {
   game: GameState;
   busy: boolean;
+  motion: PieceMotion | null;
   onMove: (move: LegalMove) => void;
 }) {
   const board = useMemo(() => parseFen(game.fen), [game.fen]);
@@ -21,6 +30,16 @@ function ChessBoard({ game, busy, onMove }: {
   const checkedKing = game.inCheck ? kingSquare(board, game.whiteToMove) : null;
   const possible = game.legalMoves.filter(move => move.from === selected);
   const targets = new Set(possible.map(move => move.to));
+  // Indices follow the current board orientation, so movement also works
+  // when the human plays Black and the board is reversed.
+  const fromIndex = motion ? squares.indexOf(motion.from) : -1;
+  const toIndex = motion ? squares.indexOf(motion.to) : -1;
+  const flightStyle = motion && fromIndex >= 0 && toIndex >= 0 ? {
+    left: `${(fromIndex % 8) * 12.5}%`,
+    top: `${Math.floor(fromIndex / 8) * 12.5}%`,
+    '--flight-x': `${((toIndex % 8) - (fromIndex % 8)) * 100}%`,
+    '--flight-y': `${(Math.floor(toIndex / 8) - Math.floor(fromIndex / 8)) * 100}%`,
+  } as CSSProperties : undefined;
 
   useEffect(() => {
     setSelected(null);
@@ -62,12 +81,19 @@ function ChessBoard({ game, busy, onMove }: {
               disabled={!eligible}
               onClick={() => selectSquare(square)}>
               {labelRank && <span className="rank-label">{square[1]}</span>}
-              {piece && <span aria-hidden="true" className={`piece ${piece === piece.toUpperCase() ? 'white-piece' : 'black-piece'}`}>{glyphs[piece]}</span>}
+              {piece && <span aria-hidden="true" className={`piece ${piece === piece.toUpperCase() ? 'white-piece' : 'black-piece'} ${motion?.to === square ? 'motion-destination' : ''}`}>{glyphs[piece]}</span>}
               {target && <span className={piece ? 'capture-ring' : 'destination-dot'} aria-hidden="true" />}
               {labelFile && <span className="file-label">{square[0]}</span>}
             </button>
           );
         })}
+        {flightStyle && motion && (
+          <div aria-hidden="true"
+            className={`piece-flight ${motion.piece === motion.piece.toUpperCase() ? 'white-piece' : 'black-piece'}`}
+            style={flightStyle}>
+            {glyphs[motion.piece]}
+          </div>
+        )}
       </div>
       {promotionChoices.length > 0 && (
         <div className="promotion-cover" role="dialog" aria-label="Choose promotion piece" aria-modal="true">
@@ -102,6 +128,7 @@ export default function App() {
   const [difficulty, setDifficulty] = useState(2);
   const [busy, setBusy] = useState(false);
   const [thinking, setThinking] = useState(false);
+  const [motion, setMotion] = useState<PieceMotion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(false);
   const historyEnd = useRef<HTMLDivElement>(null);
@@ -110,14 +137,29 @@ export default function App() {
     if (!current.aiTurn) return;
     setThinking(true);
     try {
-      const response = await api.ai(current.id);
+      // Calculate concurrently with a short readable pause. If search takes
+      // longer, we present the result as soon as it is ready.
+      const [response] = await Promise.all([
+        api.ai(current.id),
+        pause(MIN_ENGINE_RESPONSE_MS),
+      ]);
+      const last = response.lastMove;
+      const movingPiece = last ? parseFen(current.fen)[last.from] : undefined;
+      if (last && movingPiece) {
+        setMotion({ from: last.from, to: last.to, piece: movingPiece });
+      }
       setGame(response);
+      if (last && movingPiece) {
+        await pause(PIECE_TRAVEL_MS);
+        setMotion(null);
+      }
     } finally {
       setThinking(false);
     }
   }
 
   async function newGame(white: boolean, level: number, oldId?: string) {
+    setMotion(null);
     setBusy(true);
     setError(null);
     try {
@@ -210,7 +252,7 @@ export default function App() {
             <span className="player-badge">CPU</span>
           </div>
 
-          {game ? <ChessBoard game={game} busy={busy} onMove={move => void makeMove(move)} /> :
+          {game ? <ChessBoard game={game} busy={busy} motion={motion} onMove={move => void makeMove(move)} /> :
             <div className="board-placeholder"><span>♜</span><p>Connecting to the engine...</p></div>}
 
           <div className="player-strip human-strip">

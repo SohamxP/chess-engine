@@ -119,3 +119,19 @@ test('mobile layout keeps the board usable without horizontal page overflow', as
   await board(page).getByRole('button', { name: /^e2 white p/ }).click();
   await expect(board(page).getByRole('button', { name: /^e4 empty, legal destination/ })).toBeVisible();
 });
+
+test('AI movement has readable pacing and a visible piece animation', async ({ page }) => {
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+
+  await board(page).getByRole('button', { name: /^e2 white p/ }).click();
+  const moveStarted = Date.now();
+  await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
+
+  // AI search happens on the real Java server. It should still display a
+  // readable thinking interval before showing the piece's travel.
+  await expect(page.locator('.piece-flight')).toBeVisible({ timeout: 45_000 });
+  expect(Date.now() - moveStarted).toBeGreaterThanOrEqual(550);
+  await expect(page.locator('.piece-flight')).toHaveCount(0);
+  await expect(page.locator('.move-count')).toHaveText('2 MOVES');
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+});

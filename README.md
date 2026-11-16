@@ -41,7 +41,10 @@ flips when you play Black. Pawn promotion supports Queen, Rook, Bishop or Knight
 When playing Black, the engine makes the opening move first.
 
 The browser sends the human move, displays it immediately, then requests the
-engine reply independently. If a reply fails, use **Retry engine move**; the
+engine reply independently. AI replies have a minimum 700 ms visible pause
+and a 420 ms piece-movement animation, including when playing Black.
+The pause runs concurrently with computation, so it does not artificially
+slow the Java search. If a reply fails, use **Retry engine move**; the
 game remains stored in the Java process.
 
 ## REST API
