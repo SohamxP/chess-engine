@@ -116,6 +116,13 @@ test('promotion chooser sends the selected underpromotion (mocked near-promotion
 test('mobile layout keeps the board usable without horizontal page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(board(page).getByRole('button')).toHaveCount(64);
+  // VS15 tells iOS to render a CSS-colorable pawn, not a precolored emoji.
+  const whitePawn = board(page).getByRole('button', { name: /^e2 white p/ }).locator('.piece');
+  const blackPawn = board(page).getByRole('button', { name: /^e7 black p/ }).locator('.piece');
+  await expect(whitePawn).toHaveText('♟\uFE0E');
+  await expect(blackPawn).toHaveText('♟\uFE0E');
+  await expect(whitePawn).toHaveCSS('color', 'rgb(255, 250, 240)');
+  await expect(blackPawn).toHaveCSS('color', 'rgb(37, 48, 42)');
   const overflow = await page.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);

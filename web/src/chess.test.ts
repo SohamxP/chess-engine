@@ -13,7 +13,9 @@ describe('chess UI board helpers', () => {
     expect(glyphs.N).toBe(glyphs.n);
     expect(glyphs.P).toBe(glyphs.p);
     expect(glyphs.K).toBe('♚');
-    expect(glyphs.P).toBe('♟');
+    // Require the text-presentation selector: mobile Safari otherwise draws
+    // a dark, precolored pawn emoji for both sides.
+    expect(glyphs.P).toBe('♟\uFE0E');
   });
 
   it('reconstructs historic boards exactly from FEN records', () => {

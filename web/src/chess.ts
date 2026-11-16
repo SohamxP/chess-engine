@@ -49,8 +49,10 @@ export const ranks = '87654321';
 export const startingFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 export const glyphs: Record<string, string> = {
   // Use filled glyphs for both sides; CSS makes White ivory and Black charcoal.
-  K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟',
-  k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟',
+  // U+265F defaults to a colored emoji on iOS. VS15 (U+FE0E) forces text
+  // presentation, allowing the white/black CSS colors to take effect.
+  K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟\uFE0E',
+  k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟\uFE0E',
 };
 
 /** Parse only placement; Java remains authoritative for chess legality. */
