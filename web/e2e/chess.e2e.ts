@@ -464,3 +464,25 @@ test('arrow keys work when the result popup is open and when move buttons have f
   await page.getByRole('button', { name: 'Next move' }).click();
   await expect(board(page)).toHaveAttribute('data-review-ply', 'live');
 });
+
+
+test('game review runs local Stockfish analysis and shows move feedback', async ({ page }) => {
+  test.setTimeout(120_000);
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+  await board(page).getByRole('button', { name: /^e2 white p/ }).click();
+  await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
+  await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
+
+  const panel = page.getByRole('region', { name: 'Game review' });
+  await panel.getByRole('button', { name: 'Analyze game' }).click();
+  await expect(panel.getByRole('status')).toHaveText('Analyzed 3 positions.', { timeout: 95_000 });
+  await expect(panel.locator('.review-chart')).toBeVisible();
+  await expect(panel.locator('.review-summary')).toContainText('Blunders');
+  await expect(board(page)).toHaveAttribute('data-review-ply', '0');
+
+  await page.getByRole('button', { name: 'View position after move 1: e4' }).click();
+  await expect(board(page)).toHaveAttribute('data-review-ply', '1');
+  await expect(panel.locator('.review-selected')).toContainText('e4');
+  await panel.getByRole('button', { name: 'Live board' }).click();
+  await expect(board(page)).toHaveAttribute('data-review-ply', 'live');
+});
