@@ -38,7 +38,7 @@ Select a piece and click a highlighted legal square. You can play White or
 Black, select Easy (depth 1), Medium (depth 2) or Hard (depth 3), undo an
 entire human/AI turn, claim eligible draws, and start a new match. The board
 flips when you play Black. Pawn promotion supports Queen, Rook, Bishop or Knight.
-When playing Black, the engine makes the opening move first.
+When playing Black, the engine makes the opening move first. You can also **resign** (after confirmation), or **offer a draw** on your turn. Unlike a rules-based claim, the computer can decline and the game continues. This baseline opponent accepts when its position evaluation is at least 300 centipawns worse than yours.
 
 The browser sends the human move to Java, then animates it on the board.
 **Both human and computer captures resolve on arrival:** the captured piece
@@ -64,6 +64,8 @@ stored in the Java process.
 | POST | `/api/games/{id}/moves` | Human move: `{ "from": "e2", "to": "e4" }` |
 | POST | `/api/games/{id}/ai` | Compute the engine's reply |
 | POST | `/api/games/{id}/undo` | Undo the last human move and AI reply |
+| POST | `/api/games/{id}/resign` | Resign; opponent wins |
+| POST | `/api/games/{id}/offers/draw` | Offer draw; returns `accepted`, `message`, `game` |
 | POST | `/api/games/{id}/claims` | `{ "claim": "THREEFOLD_REPETITION" }` or `FIFTY_MOVE_RULE` |
 | DELETE | `/api/games/{id}` | Discard a session |
 
@@ -83,7 +85,7 @@ npm run build
 
 The **required GitHub Actions `test` job** runs Java tests, frontend unit
 tests, type-checking, the production build, and Chromium E2E tests against
-a real Spring Boot API. No merge should happen until the entire job passes
+a real Spring Boot API, plus a Docker production-image smoke test. No merge should happen until the entire job passes
 on the PR.
 
 ### Browser integration tests
@@ -105,9 +107,7 @@ the other browser cases use the real API.
 
 ## Current limits
 
-Game sessions are **in memory**, and are lost when the Java process restarts.
-This project currently has no accounts, multiplayer, persistence, or deployed
-production instance. AI difficulty changes search depth rather than time
+Game sessions are **in memory**, and are lost when the Java process restarts, redeploys, or is suspended by free hosting. This project has no accounts, multiplayer, or persistence. AI difficulty changes search depth rather than time
 budget; depth 3 may be slower on some positions. The React development server
 requires the Java API to be running separately.
 
@@ -133,3 +133,31 @@ and forward. **Live** returns to the actual ongoing game. Review mode is
 read-only; it never changes the game on the Java server. Undo still explicitly
 changes the live game state.
 
+
+## Publish on Render (one web service)
+
+The root `Dockerfile` compiles React and bundles it in the Spring Boot JAR.
+Both the website (`/`) and Java API (`/api/games`) use one origin, so no
+CORS setup or extra frontend host is required.
+
+1. Connect your GitHub repository `SohamxP/chess-engine` to [Render](https://dashboard.render.com/).
+2. In the Render dashboard select **New > Blueprint**, then choose the repo's `render.yaml`.
+3. Review the proposed service (`openfile-chess`) and **Free** plan before approving.
+4. Deploy `main`. Render will assign a public HTTPS `*.onrender.com` address.
+
+The blueprint sets the health check to `/healthz`, and new commits are
+deployed only after GitHub CI checks pass.
+
+**Free tier limitations:** A Free Render service currently has 512 MB RAM,
+spins down after 15 minutes of inactivity, and can take about one minute to
+wake. All games live in the Java process memory, so they are lost when
+the instance is restarted, redeployed, or put to sleep. This is a hobby demo
+with no persisted match data; verify Render usage/billing limits.
+
+### Try the production container locally
+
+```sh
+docker build -t openfile-chess .
+docker run --rm -p 10000:10000 openfile-chess
+# Visit http://localhost:10000
+```

@@ -39,6 +39,24 @@ jobs:
       - name: Run real-browser E2E tests against the Java API
         working-directory: web
         run: npm run test:e2e
+      - name: Build production Docker image
+        run: docker build --tag openfile-chess:ci .
+      - name: Smoke test deployed site and API from the Docker image
+        shell: bash
+        run: |
+          docker run -d --name openfile-chess-ci -p 127.0.0.1:18500:10000 openfile-chess:ci
+          trap 'docker logs --tail 60 openfile-chess-ci; docker rm -f openfile-chess-ci' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:18500/healthz | grep -q '^ok$'; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:18500/healthz | grep -q '^ok$'
+          curl --fail --silent http://127.0.0.1:18500/ | grep -q 'OpenFile Chess'
+          curl --fail --silent -X POST http://127.0.0.1:18500/api/games \
+            -H 'Content-Type: application/json' \
+            -d '{"playAsWhite":true,"depth":1}' | grep -q '"status":"IN_PROGRESS"'
       - name: Upload browser test artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4

@@ -4,6 +4,9 @@ package com.chessengine.game;
 public enum GameStatus {
     IN_PROGRESS,
     CHECKMATE,
+    WHITE_RESIGNED,
+    BLACK_RESIGNED,
+    DRAW_AGREEMENT,
     STALEMATE,
     DRAW_INSUFFICIENT_MATERIAL,
     DRAW_THREEFOLD_REPETITION,

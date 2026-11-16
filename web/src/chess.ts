@@ -97,6 +97,9 @@ export function statusLabel(game: GameState): string {
   switch (game.status) {
     case 'IN_PROGRESS':
       return game.aiTurn ? 'The engine is thinking' : game.inCheck ? 'Check — your move' : 'Your move';
+    case 'WHITE_RESIGNED': return 'Black wins · White resigned';
+    case 'BLACK_RESIGNED': return 'White wins · Black resigned';
+    case 'DRAW_AGREEMENT': return 'Draw · By agreement';
     case 'CHECKMATE':
       return `Checkmate · ${game.whiteToMove ? 'Black' : 'White'} wins`;
     case 'STALEMATE': return 'Draw · Stalemate';
@@ -120,8 +123,10 @@ export function kingSquare(board: BoardMap, white: boolean): string | null {
 /** Final game scores use the traditional chess result format. */
 export function resultScore(game: Pick<GameState, 'status' | 'whiteToMove'>): string | null {
   if (game.status === 'IN_PROGRESS') return null;
+  if (game.status === 'WHITE_RESIGNED') return '0-1';
+  if (game.status === 'BLACK_RESIGNED') return '1-0';
   if (game.status === 'CHECKMATE') return game.whiteToMove ? '0-1' : '1-0';
-  if (game.status.startsWith('DRAW_') || game.status === 'STALEMATE') return '1/2-1/2';
+  if (game.status === 'DRAW_AGREEMENT' || game.status.startsWith('DRAW_') || game.status === 'STALEMATE') return '1/2-1/2';
   return null;
 }
 

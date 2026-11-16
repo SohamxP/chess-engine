@@ -406,3 +406,54 @@ test('touch drag moves a pawn on a small board', async ({ browser }) => {
     await context.close();
   }
 });
+
+
+test('resigning shows the correct game result and requires confirmation', async ({ page }) => {
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Resign', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Confirm resignation' })).toBeVisible();
+  await page.getByRole('button', { name: 'Keep playing' }).click();
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Resign', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm resignation' }).click();
+  await expect(page.getByRole('dialog', { name: 'Game result' })).toBeVisible();
+  await expect(page.locator('.result-score')).toHaveText('0-1');
+  await page.getByRole('button', { name: 'Review board' }).click();
+  await expect(page.getByText('Black wins · White resigned')).toBeVisible();
+  await expect(board(page).getByRole('button', { name: /^e2 white p/ })).toBeDisabled();
+});
+
+test('offering a draw can be declined and game continues without changing position', async ({ page }) => {
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Offer draw' }).click();
+  await expect(page.getByRole('status')).toContainText('Computer declined your draw offer.');
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+  await expect(page.locator('.move-count')).toHaveText('0 MOVES');
+  await board(page).getByRole('button', { name: /^e2 white p/ }).click();
+  await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
+  await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
+});
+
+test('arrow keys work when the result popup is open and when move buttons have focus', async ({ page }) => {
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+  await board(page).getByRole('button', { name: /^e2 white p/ }).click();
+  await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
+  await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
+
+  await page.getByRole('button', { name: 'Resign', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm resignation' }).click();
+  await expect(page.getByRole('dialog', { name: 'Game result' })).toBeVisible();
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByRole('dialog', { name: 'Game result' })).toHaveCount(0);
+  await expect(board(page)).toHaveAttribute('data-review-ply', '1');
+
+  await page.getByRole('button', { name: 'Previous move' }).click();
+  await expect(board(page)).toHaveAttribute('data-review-ply', '0');
+  await page.getByRole('button', { name: 'Next move' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(board(page)).toHaveAttribute('data-review-ply', '1');
+  await page.getByRole('button', { name: 'Next move' }).click();
+  await expect(board(page)).toHaveAttribute('data-review-ply', 'live');
+});

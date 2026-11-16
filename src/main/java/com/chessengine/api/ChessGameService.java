@@ -1,6 +1,7 @@
 package com.chessengine.api;
 
 import com.chessengine.ai.ChessAI;
+import com.chessengine.ai.PositionEvaluator;
 import com.chessengine.ai.SearchResult;
 import com.chessengine.board.Move;
 import com.chessengine.game.DrawClaim;
@@ -31,6 +32,7 @@ public class ChessGameService {
         final String initialFen = game.toFen();
         List<GameView.MoveEntry> moves = new ArrayList<>();
         GameView.AiStats aiStats;
+        GameStatus outcomeOverride;
 
         Session(boolean humanWhite, int depth) {
             this.humanWhite = humanWhite;
@@ -61,7 +63,7 @@ public class ChessGameService {
     public GameView humanMove(UUID id, String from, String to, String promotion) {
         Session session = find(id);
         synchronized (session) {
-            if (session.game.getStatus() != GameStatus.IN_PROGRESS) {
+            if (sessionStatus(session) != GameStatus.IN_PROGRESS) {
                 throw new IllegalStateException("This game has already finished.");
             }
             if (session.game.isWhiteToMove() != session.humanWhite) {
@@ -87,7 +89,7 @@ public class ChessGameService {
     public GameView aiMove(UUID id) {
         Session session = find(id);
         synchronized (session) {
-            if (session.game.getStatus() != GameStatus.IN_PROGRESS) {
+            if (sessionStatus(session) != GameStatus.IN_PROGRESS) {
                 throw new IllegalStateException("This game has already finished.");
             }
             if (session.game.isWhiteToMove() == session.humanWhite) {
@@ -107,6 +109,9 @@ public class ChessGameService {
     public GameView undo(UUID id) {
         Session session = find(id);
         synchronized (session) {
+            if (session.outcomeOverride != null) {
+                throw new IllegalStateException("The game is finished.");
+            }
             if (session.history.stream().noneMatch(snapshot -> !snapshot.aiMove())) {
                 throw new IllegalStateException("No player move to undo.");
             }
@@ -124,6 +129,9 @@ public class ChessGameService {
     public GameView claimDraw(UUID id, DrawClaim claim) {
         Session session = find(id);
         synchronized (session) {
+            if (sessionStatus(session) != GameStatus.IN_PROGRESS) {
+                throw new IllegalStateException("The game is finished.");
+            }
             if (session.game.isWhiteToMove() != session.humanWhite) {
                 throw new IllegalStateException("Draw claims are only allowed on your turn.");
             }
@@ -132,6 +140,53 @@ public class ChessGameService {
             }
             return view(session);
         }
+    }
+
+    /** Resignation ends the session even when the engine is on move. */
+    public GameView resign(UUID id) {
+        Session session = find(id);
+        synchronized (session) {
+            if (sessionStatus(session) != GameStatus.IN_PROGRESS) {
+                throw new IllegalStateException("The game has already finished.");
+            }
+            session.outcomeOverride = session.humanWhite
+                    ? GameStatus.WHITE_RESIGNED : GameStatus.BLACK_RESIGNED;
+            return view(session);
+        }
+    }
+
+    /**
+     * A draw offer is different from a rules-based draw claim: the opponent
+     * can refuse it. This simple deterministic opponent accepts only if its
+     * position evaluation is at least 300 centipawns worse than the human's.
+     * A refusal does not change the board, turn or game status.
+     */
+    public GameView.DrawOfferResponse offerDraw(UUID id) {
+        Session session = find(id);
+        synchronized (session) {
+            if (sessionStatus(session) != GameStatus.IN_PROGRESS) {
+                throw new IllegalStateException("The game has already finished.");
+            }
+            if (session.game.isWhiteToMove() != session.humanWhite) {
+                throw new IllegalStateException("Offer a draw on your turn.");
+            }
+            boolean accepted = shouldAcceptDraw(session.game, session.humanWhite);
+            if (accepted) session.outcomeOverride = GameStatus.DRAW_AGREEMENT;
+            return new GameView.DrawOfferResponse(view(session), accepted,
+                    accepted ? "Computer accepted your draw offer."
+                             : "Computer declined your draw offer.");
+        }
+    }
+
+    static boolean shouldAcceptDraw(Game game, boolean humanWhite) {
+        int scoreForHuman = new PositionEvaluator().evaluate(game.getBoard())
+                * (humanWhite ? 1 : -1);
+        return scoreForHuman >= 300;
+    }
+
+    private static GameStatus sessionStatus(Session session) {
+        return session.outcomeOverride != null ? session.outcomeOverride
+                                               : session.game.getStatus();
     }
 
     public void delete(UUID id) {
@@ -179,7 +234,7 @@ public class ChessGameService {
 
     private static GameView view(Session session) {
         Game game = session.game;
-        GameStatus status = game.getStatus();
+        GameStatus status = sessionStatus(session);
         boolean aiTurn = status == GameStatus.IN_PROGRESS
                 && game.isWhiteToMove() != session.humanWhite;
         List<GameView.MoveView> legal = status == GameStatus.IN_PROGRESS && !aiTurn
@@ -193,9 +248,10 @@ public class ChessGameService {
         }
         return new GameView(session.id, game.toFen(), session.initialFen, status.name(),
                 game.isWhiteToMove(), game.isInCheck(), session.humanWhite, session.depth,
-                aiTurn, session.history.stream().anyMatch(snapshot -> !snapshot.aiMove()),
-                game.canClaimThreefoldRepetition() && !aiTurn,
-                game.canClaimFiftyMoveRule() && !aiTurn,
+                aiTurn, status == GameStatus.IN_PROGRESS
+                        && session.history.stream().anyMatch(snapshot -> !snapshot.aiMove()),
+                status == GameStatus.IN_PROGRESS && game.canClaimThreefoldRepetition() && !aiTurn,
+                status == GameStatus.IN_PROGRESS && game.canClaimFiftyMoveRule() && !aiTurn,
                 legal, List.copyOf(session.moves), last, session.aiStats);
     }
 }

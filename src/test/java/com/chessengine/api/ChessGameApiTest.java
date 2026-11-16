@@ -37,6 +37,62 @@ public class ChessGameApiTest {
         return json.readTree(result.getResponse().getContentAsString());
     }
 
+
+    @Test void resignationDeclaresCorrectWinnerAndStopsGame() throws Exception {
+        JsonNode whiteStart = create(true, 1);
+        String whiteId = whiteStart.get("id").asText();
+        MvcResult whiteResign = mvc.perform(post("/api/games/{id}/resign", whiteId))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode whiteResult = json.readTree(whiteResign.getResponse().getContentAsString());
+        assertEquals("WHITE_RESIGNED", whiteResult.get("status").asText());
+        assertFalse(whiteResult.get("aiTurn").asBoolean());
+        assertEquals(0, whiteResult.get("legalMoves").size());
+        assertEquals(whiteStart.get("fen").asText(), whiteResult.get("fen").asText());
+        mvc.perform(post("/api/games/{id}/resign", whiteId))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/games/{id}/moves", whiteId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"from\":\"e2\",\"to\":\"e4\"}"))
+                .andExpect(status().isConflict());
+
+        JsonNode blackStart = create(false, 1);
+        String blackId = blackStart.get("id").asText();
+        MvcResult blackResign = mvc.perform(post("/api/games/{id}/resign", blackId))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode blackResult = json.readTree(blackResign.getResponse().getContentAsString());
+        assertEquals("BLACK_RESIGNED", blackResult.get("status").asText());
+        assertFalse(blackResult.get("aiTurn").asBoolean());
+        mvc.perform(post("/api/games/{id}/ai", blackId))
+                .andExpect(status().isConflict());
+    }
+
+    @Test void drawOfferCanBeDeclinedWithoutModifyingTheGame() throws Exception {
+        JsonNode start = create(true, 1);
+        String id = start.get("id").asText();
+        MvcResult offer = mvc.perform(post("/api/games/{id}/offers/draw", id))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode declined = json.readTree(offer.getResponse().getContentAsString());
+        assertFalse(declined.get("accepted").asBoolean());
+        assertTrue(declined.get("message").asText().contains("declined"));
+        assertEquals("IN_PROGRESS", declined.get("game").get("status").asText());
+        assertEquals(start.get("fen").asText(), declined.get("game").get("fen").asText());
+        assertEquals(20, declined.get("game").get("legalMoves").size());
+        assertEquals(0, declined.get("game").get("moveHistory").size());
+        move(id, "e2", "e4");
+        mvc.perform(post("/api/games/{id}/offers/draw", id))
+                .andExpect(status().isConflict());
+    }
+
+    @Test void drawOfferAcceptanceDependsOnOpponentsDisadvantage() {
+        var aheadWhite = new com.chessengine.game.Game("4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
+        var aheadBlack = new com.chessengine.game.Game("3qk3/8/8/8/8/8/8/4K3 w - - 0 1");
+        assertTrue(ChessGameService.shouldAcceptDraw(aheadWhite, true));
+        assertFalse(ChessGameService.shouldAcceptDraw(aheadWhite, false));
+        assertTrue(ChessGameService.shouldAcceptDraw(aheadBlack, false));
+        assertFalse(ChessGameService.shouldAcceptDraw(aheadBlack, true));
+        assertFalse(ChessGameService.shouldAcceptDraw(new com.chessengine.game.Game(), true));
+    }
+
     @Test void newGameExposesStartingPositionAndTwentyLegalMoves() throws Exception {
         JsonNode state = create(true, 1);
         assertEquals("IN_PROGRESS", state.get("status").asText());

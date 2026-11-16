@@ -9,7 +9,7 @@ async function request<T>(url: string, method: 'GET' | 'POST' | 'DELETE' = 'GET'
       body: data === undefined ? undefined : JSON.stringify(data),
     });
   } catch {
-    throw new Error('Cannot reach the Java server. Is it running on port 8080?');
+    throw new Error('Cannot reach the chess server. Check your connection, or retry after the service starts.');
   }
   if (!response.ok) {
     const body: { message?: string } = await response.json().catch(() => ({}));
@@ -25,5 +25,8 @@ export const api = {
   undo: (id: string) => request<GameState>(`/api/games/${id}/undo`, 'POST'),
   claim: (id: string, claim: 'THREEFOLD_REPETITION' | 'FIFTY_MOVE_RULE') =>
     request<GameState>(`/api/games/${id}/claims`, 'POST', { claim }),
+  resign: (id: string) => request<GameState>(`/api/games/${id}/resign`, 'POST'),
+  offerDraw: (id: string) => request<{ game: GameState; accepted: boolean; message: string }>(
+    `/api/games/${id}/offers/draw`, 'POST'),
   close: (id: string) => request<void>(`/api/games/${id}`, 'DELETE'),
 };
