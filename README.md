@@ -1,4 +1,4 @@
-# OpenFile Chess — Java Engine + React
+# PlyForge — Java Chess Engine + React
 
 A full-stack human-versus-engine chess game. The **Java 25 chess engine** owns
 all move legality, game termination, position evaluation, and AI search. A
@@ -31,6 +31,8 @@ npm run dev
 Open [http://localhost:5173](http://localhost:5173). Vite forwards `/api`
 requests to `http://localhost:8080`. The API does not require CORS because
 requests go through the same-origin development proxy.
+
+Try it live: [PlyForge](https://openfile-chess.onrender.com/) (the original Render URL is retained to avoid breaking existing links).
 
 ## Play
 

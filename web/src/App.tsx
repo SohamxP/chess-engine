@@ -553,7 +553,7 @@ export default function App() {
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand"><span className="logo-symbol" aria-hidden="true">♞</span>
-            <span>OpenFile <strong>Chess</strong></span></div>
+            <span>Ply<strong>Forge</strong></span></div>
           <span className="topbar-caption">Play against the computer</span>
           <a className="source-link" href="https://github.com/SohamxP/chess-engine"
             target="_blank" rel="noreferrer">View source <span aria-hidden="true">↗</span></a>
@@ -732,7 +732,7 @@ export default function App() {
       )}
 
       <footer className="site-footer">
-        <span>OpenFile Chess</span><span>Built with Java and React</span>
+        <span>PlyForge</span><span>Built with Java and React</span>
       </footer>
 
       {confirmResign && (
