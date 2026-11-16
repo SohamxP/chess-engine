@@ -33,3 +33,16 @@ jobs:
       - name: Type-check and build React UI
         working-directory: web
         run: npm run build
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Run real-browser E2E tests against the Java API
+        working-directory: web
+        run: npm run test:e2e
+      - name: Upload browser test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-debug
+          path: web/test-results
+          if-no-files-found: ignore

@@ -70,9 +70,27 @@ npm test
 npm run build
 ```
 
-The **required GitHub Actions `test` job** runs the Java tests and frontend
-tests, type-check and production build. No merge should happen until that
-check passes on the PR.
+The **required GitHub Actions `test` job** runs Java tests, frontend unit
+tests, type-checking, the production build, and Chromium E2E tests against
+a real Spring Boot API. No merge should happen until the entire job passes
+on the PR.
+
+### Browser integration tests
+
+With JDK 25, Maven, and Node.js 22 installed:
+
+```sh
+cd web
+npm install
+npx playwright install chromium
+npm run test:e2e
+```
+
+Playwright starts the Java server and Vite automatically (or reuses your
+locally running servers). The browser checks playing against the actual Java
+AI, undo, starting a Black-side match, new-game reset, and mobile layout.
+A near-promotion position is mocked solely for testing the promotion picker;
+the other browser cases use the real API.
 
 ## Current limits
 
