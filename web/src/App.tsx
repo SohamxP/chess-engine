@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { api } from './api';
 import {
-  glyphs, isLightSquare, kingSquare, parseFen, resultScore,
-  squareOrder, statusLabel, type GameState, type LegalMove,
+  frameAtPly, glyphs, isLightSquare, kingSquare, parseFen, resultScore,
+  squareOrder, statusLabel, stepHistory, type GameState, type LegalMove,
 } from './chess';
 
 const levels = ['Easy', 'Medium', 'Hard'];
@@ -15,19 +15,32 @@ type PieceMotion = { from: string; to: string; piece: string };
 const delay = (ms: number): Promise<void> =>
   new Promise(resolve => window.setTimeout(resolve, ms));
 
-function ChessBoard({ game, busy, motion, onMove }: {
+type DragSession = {
+  from: string; piece: string; pointerId: number;
+  x: number; y: number; active: boolean;
+};
+
+function ChessBoard({ game, busy, motion, reviewPly, onMove }: {
   game: GameState;
   busy: boolean;
   motion: PieceMotion | null;
+  reviewPly: number | null;
   onMove: (move: LegalMove) => void;
 }) {
-  const board = useMemo(() => parseFen(game.fen), [game.fen]);
+  const frame = useMemo(() => frameAtPly(game, reviewPly), [game, reviewPly]);
+  const board = useMemo(() => parseFen(frame.fen), [frame.fen]);
   const squares = useMemo(() => squareOrder(game.humanWhite), [game.humanWhite]);
   const [selected, setSelected] = useState<string | null>(null);
   const [promotionChoices, setPromotionChoices] = useState<LegalMove[]>([]);
+  const [dragVisual, setDragVisual] = useState<{
+    from: string; piece: string; x: number; y: number; hover: string | null;
+  } | null>(null);
+  const dragSession = useRef<DragSession | null>(null);
+  const skipClick = useRef(false);
 
-  const canPlay = !busy && !game.aiTurn && game.status === 'IN_PROGRESS';
-  const checkedKing = game.inCheck ? kingSquare(board, game.whiteToMove) : null;
+  const canPlay = !busy && reviewPly === null && !game.aiTurn && game.status === 'IN_PROGRESS';
+  const checkedKing = frame.inCheck
+    ? kingSquare(board, frame.fen.split(' ')[1] === 'w') : null;
   const possible = game.legalMoves.filter(move => move.from === selected);
   const targets = new Set(possible.map(move => move.to));
 
@@ -45,7 +58,7 @@ function ChessBoard({ game, busy, motion, onMove }: {
   useEffect(() => {
     setSelected(null);
     setPromotionChoices([]);
-  }, [game.fen, game.id]);
+  }, [game.fen, game.id, reviewPly]);
 
   function selectSquare(square: string) {
     if (!canPlay || promotionChoices.length) return;
@@ -67,28 +80,96 @@ function ChessBoard({ game, busy, motion, onMove }: {
     } else setSelected(null);
   }
 
+  function squareUnderPointer(x: number, y: number): string | null {
+    const candidate = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-square]');
+    return candidate?.dataset.square ?? null;
+  }
+
+  function beginDrag(event: ReactPointerEvent<HTMLButtonElement>, square: string) {
+    if (!canPlay || promotionChoices.length || event.button !== 0) return;
+    const piece = board[square];
+    if (!piece || (piece === piece.toUpperCase()) !== game.humanWhite) return;
+    dragSession.current = {
+      from: square, piece, pointerId: event.pointerId,
+      x: event.clientX, y: event.clientY, active: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function updateDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    const drag = dragSession.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.active && Math.hypot(
+      event.clientX - drag.x, event.clientY - drag.y,
+    ) < 8) return;
+    drag.active = true;
+    setSelected(drag.from);
+    setDragVisual({
+      from: drag.from, piece: drag.piece,
+      x: event.clientX, y: event.clientY,
+      hover: squareUnderPointer(event.clientX, event.clientY),
+    });
+  }
+
+  function finishDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    const drag = dragSession.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragSession.current = null;
+    if (!drag.active) return; // A normal tap/click remains supported.
+    event.preventDefault();
+    skipClick.current = true;
+    window.setTimeout(() => { skipClick.current = false; }, 0);
+    setDragVisual(null);
+    const destination = squareUnderPointer(event.clientX, event.clientY);
+    const choices = game.legalMoves.filter(move =>
+      move.from === drag.from && move.to === destination);
+    if (choices.length > 1) {
+      setPromotionChoices(choices);
+    } else if (choices.length === 1) {
+      setSelected(null);
+      onMove(choices[0]);
+    } else {
+      setSelected(null);
+    }
+  }
+
+  function cancelDrag() {
+    dragSession.current = null;
+    setDragVisual(null);
+    setSelected(null);
+  }
+
   return (
     <div className="board-frame">
       <div className="board" role="group" aria-label="Interactive chess board"
-        data-moving-to={motion?.to ?? ''}>
+        data-moving-to={motion?.to ?? ''} data-review-ply={reviewPly ?? 'live'}>
         {squares.map((square, index) => {
           const piece = board[square];
           const target = targets.has(square);
-          const last = game.lastMove?.from === square || game.lastMove?.to === square;
+          const last = frame.lastMove?.from === square || frame.lastMove?.to === square;
           return (
-            <button key={square} type="button"
+            <button key={square} type="button" data-square={square}
               className={[
                 'square', isLightSquare(square) ? 'light' : 'dark',
                 last ? 'last-move' : '',
                 selected === square ? 'selected' : '',
                 checkedKing === square ? 'checked' : '',
+                dragVisual?.from === square ? 'drag-source' : '',
+                dragVisual?.hover === square && targets.has(square) ? 'drag-over' : '',
               ].filter(Boolean).join(' ')}
               aria-label={square + (piece
                 ? ' ' + (piece === piece.toUpperCase() ? 'white' : 'black') + ' ' + piece.toLowerCase()
                 : ' empty') + (target ? ', legal destination' : '')}
               aria-pressed={selected === square}
               disabled={!canPlay}
-              onClick={() => selectSquare(square)}>
+              onPointerDown={event => beginDrag(event, square)}
+              onPointerMove={updateDrag}
+              onPointerUp={finishDrag}
+              onPointerCancel={cancelDrag}
+              onClick={() => {
+                if (skipClick.current) { skipClick.current = false; return; }
+                selectSquare(square);
+              }}>
               {index % 8 === 0 && <span className="rank-label">{square[1]}</span>}
               {piece && <span aria-hidden="true"
                 className={[
@@ -111,6 +192,15 @@ function ChessBoard({ game, busy, motion, onMove }: {
           </div>
         )}
       </div>
+      {dragVisual && (
+        <div className={'drag-ghost ' +
+          (dragVisual.piece === dragVisual.piece.toUpperCase()
+            ? 'white-piece' : 'black-piece')}
+          aria-hidden="true"
+          style={{ left: dragVisual.x, top: dragVisual.y }}>
+          {glyphs[dragVisual.piece]}
+        </div>
+      )}
       {promotionChoices.length > 0 && (
         <div className="promotion-cover" role="dialog"
           aria-label="Choose promotion piece" aria-modal="true">
@@ -152,6 +242,8 @@ export default function App() {
   const [motion, setMotion] = useState<PieceMotion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dismissedResult, setDismissedResult] = useState<string | null>(null);
+  // null follows the live match; 0 is the starting position; N is after ply N.
+  const [reviewPly, setReviewPly] = useState<number | null>(null);
   const mounted = useRef(false);
   const historyEnd = useRef<HTMLDivElement>(null);
 
@@ -188,6 +280,7 @@ export default function App() {
     setError(null);
     setMotion(null);
     setDismissedResult(null);
+    setReviewPly(null);
     try {
       const response = await api.create(white, depth);
       setGame(response);
@@ -207,8 +300,23 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    historyEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [game?.moveHistory.length]);
+    if (reviewPly === null) historyEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [game?.moveHistory.length, reviewPly]);
+
+  useEffect(() => {
+    function handleArrow(event: KeyboardEvent) {
+      if ((event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')
+          || event.altKey || event.ctrlKey || event.metaKey
+          || !game || document.querySelector('[role="dialog"]')) return;
+      const tag = (event.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      event.preventDefault();
+      setReviewPly(cursor => stepHistory(cursor, game.moveHistory.length,
+        event.key === 'ArrowLeft' ? -1 : 1));
+    }
+    window.addEventListener('keydown', handleArrow);
+    return () => window.removeEventListener('keydown', handleArrow);
+  }, [game?.id, game?.moveHistory.length]);
 
   async function makeMove(move: LegalMove) {
     if (!game || busy || game.aiTurn) return;
@@ -230,6 +338,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     setDismissedResult(null);
+    setReviewPly(null);
     try {
       setGame(await api.undo(game.id));
     } catch (caught) {
@@ -253,7 +362,7 @@ export default function App() {
   }
 
   const movePairs = useMemo(() => {
-    const rows: { white?: string; black?: string; number: number }[] = [];
+    const rows: { white?: { san: string; ply: number }; black?: { san: string; ply: number }; number: number }[] = [];
     for (const move of game?.moveHistory ?? []) {
       const number = Math.ceil(move.ply / 2);
       let pair = rows.find(row => row.number === number);
@@ -261,16 +370,20 @@ export default function App() {
         pair = { number };
         rows.push(pair);
       }
-      if (move.white) pair.white = move.san;
-      else pair.black = move.san;
+      if (move.white) pair.white = { san: move.san, ply: move.ply };
+      else pair.black = { san: move.san, ply: move.ply };
     }
     return rows;
   }, [game?.moveHistory]);
 
-  const status = game ? statusLabel(game) : 'Connecting to engine';
+  const status = game
+    ? reviewPly !== null
+      ? 'Reviewing move ' + reviewPly + ' of ' + game.moveHistory.length
+      : statusLabel(game)
+    : 'Connecting to engine';
   const score = game ? resultScore(game) : null;
   const resultKey = game ? game.id + ':' + game.status + ':' + game.moveHistory.length : null;
-  const showResult = Boolean(score && resultKey !== dismissedResult && !busy && !motion);
+  const showResult = Boolean(score && resultKey !== dismissedResult && !busy && !motion && reviewPly === null);
   const engineSide = game?.humanWhite ? 'Black' : 'White';
   const humanSide = game?.humanWhite ? 'White' : 'Black';
 
@@ -307,8 +420,9 @@ export default function App() {
             </div>
 
             {game ? (
-              <ChessBoard game={game} busy={busy} motion={motion}
-                onMove={move => void makeMove(move)} />
+              <ChessBoard game={game} busy={busy}
+                motion={reviewPly === null ? motion : null}
+                reviewPly={reviewPly} onMove={move => void makeMove(move)} />
             ) : (
               <div className="board-placeholder">Loading your board…</div>
             )}
@@ -320,7 +434,11 @@ export default function App() {
               </div>
               <span className="player-badge">{humanSide}</span>
             </div>
-            <p className="board-footnote">Select a piece, then choose a highlighted square.</p>
+            <p className="board-footnote">
+              {reviewPly === null
+                ? 'Click or drag a piece to move. Use ← → to review moves.'
+                : 'Reviewing a past position. Return to live to continue playing.'}
+            </p>
           </section>
 
           <aside className="sidebar" aria-label="Match controls">
@@ -331,10 +449,12 @@ export default function App() {
                 <strong>{thinking ? 'Engine calculating...' : status}</strong>
               </div>
               <p className="status-description">
-                {thinking ? 'The computer is choosing its next move.' :
-                  game?.status === 'IN_PROGRESS' ? 'You are playing ' + humanSide + '.' :
-                    game ? 'The game is finished. You can review it or play again.' :
-                      'Starting your match.'}
+                {reviewPly !== null
+                  ? 'Use the arrow keys or the move list to step through the game.'
+                  : thinking ? 'The computer is choosing its next move.' :
+                    game?.status === 'IN_PROGRESS' ? 'You are playing ' + humanSide + '.' :
+                      game ? 'The game is finished. You can review it or play again.' :
+                        'Starting your match.'}
               </p>
               {error && <div className="error-message" role="alert">{error}</div>}
               <div className="action-row">
@@ -393,6 +513,18 @@ export default function App() {
             <section className="panel moves-panel">
               <div className="panel-heading"><h2>Moves</h2>
                 <span className="move-count">{game?.moveHistory.length ?? 0} MOVES</span></div>
+              <div className="history-navigation" aria-label="Move review controls">
+                <button type="button" aria-label="First position"
+                  onClick={() => setReviewPly(0)} disabled={!game || game.moveHistory.length === 0}>⟪</button>
+                <button type="button" aria-label="Previous move"
+                  onClick={() => setReviewPly(cursor => stepHistory(cursor, game?.moveHistory.length ?? 0, -1))}
+                  disabled={!game || (reviewPly === 0) || game.moveHistory.length === 0}>←</button>
+                <button type="button" aria-label="Next move"
+                  onClick={() => setReviewPly(cursor => stepHistory(cursor, game?.moveHistory.length ?? 0, 1))}
+                  disabled={!game || reviewPly === null}>→</button>
+                <button type="button" aria-label="Return to live position"
+                  onClick={() => setReviewPly(null)} disabled={reviewPly === null}>Live</button>
+              </div>
               <div className="move-table-head">
                 <span>Move</span><span>White</span><span>Black</span>
               </div>
@@ -400,8 +532,20 @@ export default function App() {
                 {movePairs.length ? movePairs.map(pair => (
                   <div className="move-pair" key={pair.number}>
                     <span className="move-number">{pair.number}.</span>
-                    <span>{pair.white || '—'}</span>
-                    <span>{pair.black || '—'}</span>
+                    {pair.white
+                      ? <button type="button" className={'move-entry ' +
+                          (reviewPly === pair.white.ply ? 'review-selected' : '')}
+                          aria-pressed={reviewPly === pair.white.ply}
+                          aria-label={'View position after move ' + pair.white.ply + ': ' + pair.white.san}
+                          onClick={() => setReviewPly(pair.white!.ply)}>{pair.white.san}</button>
+                      : <span>—</span>}
+                    {pair.black
+                      ? <button type="button" className={'move-entry ' +
+                          (reviewPly === pair.black.ply ? 'review-selected' : '')}
+                          aria-pressed={reviewPly === pair.black.ply}
+                          aria-label={'View position after move ' + pair.black.ply + ': ' + pair.black.san}
+                          onClick={() => setReviewPly(pair.black!.ply)}>{pair.black.san}</button>
+                      : <span>—</span>}
                   </div>
                 )) : <div className="no-moves">Moves will appear here as you play.</div>}
                 <div ref={historyEnd} />
