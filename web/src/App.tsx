@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { api } from './api';
+import { analyzeGame, MAX_REVIEW_PLIES, REVIEW_DEPTH } from './analysis';
 import {
-  frameAtPly, glyphs, isLightSquare, kingSquare, parseFen, resultScore,
+  analysisSummary, buildReviewedMoves, formatEvaluation, numericEvaluation,
+  type PositionEvaluation,
+} from './review';
+import {
+  frameAtPly, glyphs, isLightSquare, kingSquare, moveNotation, parseFen, resultScore,
   squareOrder, statusLabel, stepHistory, type GameState, type LegalMove,
 } from './chess';
 
@@ -248,6 +253,58 @@ export default function App() {
   const [reviewPly, setReviewPly] = useState<number | null>(null);
   const mounted = useRef(false);
   const historyList = useRef<HTMLDivElement>(null);
+  const reviewController = useRef<AbortController | null>(null);
+  const [review, setReview] = useState<{
+    gameId: string;
+    positions: PositionEvaluation[];
+    total: number;
+    running: boolean;
+    error: string | null;
+  } | null>(null);
+
+  function clearReview() {
+    reviewController.current?.abort();
+    reviewController.current = null;
+    setReview(null);
+  }
+
+  function stopReview() {
+    reviewController.current?.abort();
+    reviewController.current = null;
+    setReview(current => current ? {
+      ...current, running: false, error: 'Analysis stopped. Partial results are shown.',
+    } : null);
+  }
+
+  async function startReview() {
+    if (!game || busy || game.moveHistory.length === 0) return;
+    reviewController.current?.abort();
+    const controller = new AbortController();
+    reviewController.current = controller;
+    const target = game;
+    const total = Math.min(target.moveHistory.length, MAX_REVIEW_PLIES) + 1;
+    setReview({ gameId: target.id, positions: [], total, running: true, error: null });
+    setReviewPly(0);
+    try {
+      const positions = await analyzeGame(target, controller.signal, (partial, count) => {
+        if (!controller.signal.aborted) {
+          setReview({ gameId: target.id, positions: partial, total: count, running: true, error: null });
+        }
+      });
+      if (!controller.signal.aborted) {
+        setReview({ gameId: target.id, positions, total, running: false, error: null });
+      }
+    } catch (caught) {
+      if (!controller.signal.aborted) {
+        setReview(previous => previous?.gameId === target.id ? {
+          ...previous, running: false,
+          error: caught instanceof Error ? caught.message : 'Game analysis failed.',
+        } : previous);
+      }
+    } finally {
+      if (reviewController.current === controller) reviewController.current = null;
+    }
+  }
 
   async function showMove(before: GameState, after: GameState) {
     const move = after.lastMove;
@@ -278,6 +335,7 @@ export default function App() {
   }
 
   async function newGame(white: boolean, depth: number, oldId?: string) {
+    clearReview();
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -337,6 +395,7 @@ export default function App() {
 
   async function makeMove(move: LegalMove) {
     if (!game || busy || game.aiTurn) return;
+    clearReview();
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -386,6 +445,7 @@ export default function App() {
 
   async function undo() {
     if (!game || busy) return;
+    clearReview();
     setBusy(true);
     setError(null);
     setDismissedResult(null);
@@ -426,6 +486,27 @@ export default function App() {
     }
     return rows;
   }, [game?.moveHistory]);
+
+  const reviewedMoves = review && review.gameId === game?.id && game
+    ? buildReviewedMoves(game.moveHistory, review.positions) : [];
+  const summary = game ? analysisSummary(reviewedMoves, game.humanWhite) : {
+    blunders: 0, mistakes: 0, inaccuracies: 0,
+  };
+  const activeReviewPly = reviewPly ?? game?.moveHistory.length ?? 0;
+  const selectedReview = reviewedMoves.find(item => item.move.ply === activeReviewPly);
+  const flaggedMoves = reviewedMoves.filter(item =>
+    item.move.white === game?.humanWhite &&
+    (item.grade === 'Blunder' || item.grade === 'Mistake' || item.grade === 'Inaccuracy'));
+  const chartPoints = review?.positions.map((position, index) => {
+    const score = numericEvaluation(position);
+    if (score === null) return null;
+    return {
+      x: 8 + 304 * index / Math.max(1, review.total - 1),
+      y: 50 - Math.atan(score / 260) * 27,
+    };
+  }).filter((point): point is { x: number; y: number } => point !== null) ?? [];
+  const chartPath = chartPoints.map((point, index) =>
+    (index ? 'L' : 'M') + point.x.toFixed(1) + ' ' + point.y.toFixed(1)).join(' ');
 
   const status = game
     ? reviewPly !== null
@@ -612,6 +693,130 @@ export default function App() {
               </div>
             </section>
 
+
+            <section className="panel review-panel" aria-label="Game review">
+              <div className="panel-heading">
+                <h2>Game review</h2><span className="review-engine">Stockfish Lite</span>
+              </div>
+              <p className="review-description">
+                Find mistakes and stronger moves using optional, local browser analysis.
+                Evaluations are approximate at depth {REVIEW_DEPTH}.
+              </p>
+              <div className="review-actions">
+                {!review ? (
+                  <button type="button" className="btn-primary"
+                    disabled={!game?.moveHistory.length || busy}
+                    onClick={() => void startReview()}>Analyze game</button>
+                ) : review.running ? (
+                  <button type="button" className="btn-secondary"
+                    onClick={stopReview}>Stop analysis</button>
+                ) : (
+                  <button type="button" className="btn-secondary"
+                    disabled={!game?.moveHistory.length || busy}
+                    onClick={() => void startReview()}>Analyze again</button>
+                )}
+                {review && <button type="button" className="btn-secondary"
+                  onClick={() => setReviewPly(null)}>Live board</button>}
+              </div>
+              {!game?.moveHistory.length && (
+                <p className="review-description">Make a move to enable analysis.</p>
+              )}
+              {review && (
+                <>
+                  <p className="review-progress" role="status">
+                    {review.running
+                      ? 'Analyzed ' + review.positions.length + ' of ' + review.total + ' positions…'
+                      : review.error ?? ('Analyzed ' + review.positions.length + ' positions.')}
+                  </p>
+                  {review.running && <progress className="review-progress-bar"
+                    value={review.positions.length} max={review.total} />}
+                  {game && game.moveHistory.length > MAX_REVIEW_PLIES && (
+                    <p className="review-description">
+                      Only the first {MAX_REVIEW_PLIES} half-moves are analyzed to limit device load.
+                    </p>
+                  )}
+                  {review.positions.length > 0 && (
+                    <>
+                      <div className="review-summary">
+                        <div><strong>{summary.blunders}</strong><span>Blunders</span></div>
+                        <div><strong>{summary.mistakes}</strong><span>Mistakes</span></div>
+                        <div><strong>{summary.inaccuracies}</strong><span>Inaccuracies</span></div>
+                      </div>
+                      <div className="review-chart" aria-label="Evaluation graph">
+                        <div className="review-chart-heading">
+                          <span>Evaluation by move</span>
+                          <strong>{formatEvaluation(review.positions[activeReviewPly])}</strong>
+                        </div>
+                        <svg viewBox="0 0 320 100" width="100%" role="img"
+                          aria-label="Evaluation graph; above the middle favors White, below favors Black">
+                          <line x1="8" x2="312" y1="50" y2="50" stroke="#cbd3c8" strokeWidth="1" strokeDasharray="3 4" />
+                          <path d={chartPath} fill="none" stroke="#476b50" strokeWidth="2.5"
+                            strokeLinecap="round" strokeLinejoin="round" />
+                          {reviewPly !== null && activeReviewPly < review.positions.length && (
+                            <line x1={8 + 304 * activeReviewPly / Math.max(1, review.total - 1)}
+                              x2={8 + 304 * activeReviewPly / Math.max(1, review.total - 1)}
+                              y1="4" y2="96" stroke="#738378" strokeWidth="1" strokeDasharray="3 3" />
+                          )}
+                        </svg>
+                        <div className="review-chart-legend">
+                          <span>Black advantage ↓</span><span>White advantage ↑</span>
+                        </div>
+                      </div>
+                      <p className="review-description">
+                        Tap a move in the move list or below to inspect its position.
+                      </p>
+                      {selectedReview && (
+                        <div className="review-selected">
+                          <div className="review-selected-heading">
+                            <strong>
+                              {Math.ceil(selectedReview.move.ply / 2)}
+                              {selectedReview.move.white ? '. ' : '… '}
+                              {selectedReview.move.san}
+                            </strong>
+                            <span className={'review-grade grade-' + selectedReview.grade.toLowerCase()}>
+                              {selectedReview.grade}
+                            </span>
+                          </div>
+                          {selectedReview.betterMove && (
+                            <p>Stockfish preferred <strong>{moveNotation(selectedReview.betterMove)}</strong> instead.</p>
+                          )}
+                          {selectedReview.lossCp !== null && (
+                            <p>Estimated loss: {(selectedReview.lossCp / 100).toFixed(2)} pawns.</p>
+                          )}
+                        </div>
+                      )}
+                      <div className="review-flagged">
+                        <strong>Moves to revisit</strong>
+                        {flaggedMoves.length ? (
+                          <div className="review-flagged-list">
+                            {flaggedMoves.slice(0, 12).map(item => (
+                              <button type="button" key={item.move.ply}
+                                className={activeReviewPly === item.move.ply ? 'active' : ''}
+                                onClick={() => setReviewPly(item.move.ply)}>
+                                {Math.ceil(item.move.ply / 2)}
+                                {item.move.white ? '. ' : '… '}
+                                {item.move.san}
+                                <span>{item.grade}</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="review-description">
+                            No significant errors detected in the analyzed moves so far.
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+              <p className="review-license">
+                Powered by <a href="https://github.com/nmrugg/stockfish.js"
+                  target="_blank" rel="noreferrer">Stockfish.js 19</a> (GPLv3).
+                Analysis runs on your device; no additional server analysis load.
+              </p>
+            </section>
+
             {game?.aiStats && (
               <section className="engine-info" aria-label="Last search">
                 <div className="panel-heading"><h2>Engine details</h2></div>
@@ -655,6 +860,13 @@ export default function App() {
             <button type="button" className="btn-primary"
               onClick={() => void newGame(playAsWhite, difficulty, game.id)}>
               Play again
+            </button>
+            <button type="button" className="btn-secondary"
+              onClick={() => {
+                setDismissedResult(resultKey);
+                void startReview();
+              }}>
+              Analyze game
             </button>
             <button type="button" className="btn-secondary"
               onClick={() => setDismissedResult(resultKey)}>
