@@ -37,17 +37,33 @@ public class Game {
     }
 
     /**
-     * Returns an independent game snapshot, including repetition history
-     * and any claimed draw. Safe to explore from a search algorithm.
+     * A fully independent snapshot including repetition counts and draw claims.
+     * Useful for game-tree search without altering the actual game.
      */
     public Game copy() {
-        return new Game(board.copy(), positionCounts, claimedDraw);
+        Game snapshot = new Game(board.copy(), positionCounts, claimedDraw);
+        return snapshot;
     }
 
     private Game(Board board, Map<String, Integer> history, GameStatus claimedDraw) {
         this.board = board;
         this.positionCounts.putAll(history);
         this.claimedDraw = claimedDraw;
+    }
+
+    /**
+     * Exact search identity including all repetition counts. Two identical FEN
+     * positions may not be interchangeable if they were reached by different
+     * move histories, because repetition adjudication can then differ.
+     */
+    public String getSearchKey() {
+        StringBuilder key = new StringBuilder(board.toFen()).append('|');
+        positionCounts.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> key.append(entry.getKey())
+                        .append('=').append(entry.getValue()).append(';'));
+        if (claimedDraw != null) key.append("claimed=").append(claimedDraw);
+        return key.toString();
     }
 
     public Board getBoard() { return board.copy(); }
