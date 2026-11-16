@@ -165,8 +165,8 @@ test('move history uses standard algebraic notation from the real Java API', asy
   await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
   await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
   const first = page.locator('.move-pair').first();
-  await expect(first.locator('span').nth(1)).toHaveText('e4');
-  await expect(first.locator('span').nth(2)).not.toHaveText(/^[a-h][1-8][–-][a-h][1-8]$/);
+  await expect(first.locator('.move-entry').nth(0)).toHaveText('e4');
+  await expect(first.locator('.move-entry').nth(1)).not.toHaveText(/^[a-h][1-8][–-][a-h][1-8]$/);
 });
 
 test('captured piece remains on destination during flight and disappears on arrival', async ({ page }) => {
@@ -277,5 +277,132 @@ test('game result dialog shows official scores for either winner and drawn games
     await page.getByRole('button', { name: 'Review board' }).click();
     await expect(page.getByRole('dialog', { name: 'Game result' })).toHaveCount(0);
     await expect(board(page).getByRole('button')).toHaveCount(64);
+  }
+});
+
+
+test('dragging a white pawn makes a legal move against the real Java AI', async ({ page }) => {
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+  await board(page).getByRole('button', { name: /^e2 white p/ }).dragTo(
+    board(page).getByRole('button', { name: /^e4 empty/ }),
+  );
+  await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
+  await expect(board(page).getByRole('button', { name: /^e4 white p/ })).toBeVisible();
+  await expect(page.locator('.move-pair .move-entry').first()).toHaveText('e4');
+});
+
+test('dragging a knight also uses legal engine moves rather than pawn-only logic', async ({ page }) => {
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+  await board(page).getByRole('button', { name: /^g1 white n/ }).dragTo(
+    board(page).getByRole('button', { name: /^f3 empty/ }),
+  );
+  await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
+  await expect(board(page).getByRole('button', { name: /^f3 white n/ })).toBeVisible();
+  await expect(page.locator('.move-pair .move-entry').first()).toHaveText('Nf3');
+});
+
+test('clicking SAN moves and using keyboard arrows reviews historic boards without changing the live game', async ({ page }) => {
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+  await board(page).getByRole('button', { name: /^e2 white p/ }).click();
+  await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
+  await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
+
+  await page.getByRole('button', { name: 'View position after move 1: e4' }).click();
+  await expect(board(page)).toHaveAttribute('data-review-ply', '1');
+  await expect(page.getByText('Reviewing move 1 of 2')).toBeVisible();
+  await expect(board(page).getByRole('button', { name: /^e4 white p/ })).toBeVisible();
+  // The opponent's first move should not yet exist in this historical board.
+  await expect(board(page).getByRole('button', { name: /^e7 black p/ })).toBeVisible();
+  await expect(board(page).getByRole('button', { name: /^e4 white p/ })).toBeDisabled();
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(board(page)).toHaveAttribute('data-review-ply', '0');
+  await expect(board(page).getByRole('button', { name: /^e2 white p/ })).toBeVisible();
+  await expect(board(page).getByRole('button', { name: /^e4 empty/ })).toBeVisible();
+
+  await page.keyboard.press('ArrowRight');
+  await expect(board(page)).toHaveAttribute('data-review-ply', '1');
+  await expect(board(page).getByRole('button', { name: /^e4 white p/ })).toBeVisible();
+
+  await page.keyboard.press('ArrowRight');
+  await expect(board(page)).toHaveAttribute('data-review-ply', 'live');
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+  await expect(page.locator('.move-count')).toHaveText('2 MOVES');
+
+  await page.getByRole('button', { name: 'First position' }).click();
+  await expect(board(page)).toHaveAttribute('data-review-ply', '0');
+  await page.getByRole('button', { name: 'Return to live position' }).click();
+  await expect(board(page)).toHaveAttribute('data-review-ply', 'live');
+  // Browsing never played or undid moves on the authoritative server.
+  await expect(page.locator('.move-count')).toHaveText('2 MOVES');
+});
+
+test('clicking a later white SAN move reviews its exact stored FEN snapshot', async ({ page }) => {
+  // Regression for selecting White's 20th move (39th half-move) in a long record.
+  const opening = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  const target = '4k3/8/8/4R3/8/8/8/4K3 b - - 1 20';
+  const final = '4k3/8/8/4R3/8/8/8/3K4 w - - 2 21';
+  const moves = Array.from({ length: 40 }, (_, i) => ({
+    ply: i + 1, white: i % 2 === 0, ai: i % 2 === 1,
+    uci: i === 38 ? 'e4e5' : 'e8e7',
+    san: i === 38 ? 'Re5' : 'Ke7',
+    fen: i === 38 ? target : i === 39 ? final : opening,
+  }));
+  const game = {
+    id: '00000000-0000-0000-0000-000000000045',
+    fen: final, initialFen: opening,
+    status: 'IN_PROGRESS', whiteToMove: true, inCheck: false,
+    humanWhite: true, depth: 1, aiTurn: false,
+    canUndo: false, canClaimThreefold: false, canClaimFifty: false,
+    legalMoves: [], moveHistory: moves, lastMove: {from: 'e8', to: 'e7', promotion: null},
+    aiStats: null,
+  };
+  await page.route('**/api/games', async route => {
+    if (route.request().method() === 'POST') await route.fulfill({ status: 201, json: game });
+    else await route.continue();
+  });
+  await page.reload();
+  await expect(page.locator('.move-count')).toHaveText('40 MOVES');
+  await page.getByRole('button', { name: 'View position after move 39: Re5' }).click();
+  await expect(board(page)).toHaveAttribute('data-review-ply', '39');
+  await expect(board(page).getByRole('button', { name: /^e5 white r/ })).toBeVisible();
+  await expect(board(page).getByRole('button', { name: /^e1 white k/ })).toBeVisible();
+  await page.keyboard.press('ArrowRight');
+  await expect(board(page)).toHaveAttribute('data-review-ply', 'live');
+  await expect(board(page).getByRole('button', { name: /^d1 white k/ })).toBeVisible();
+});
+
+test('touch drag moves a pawn on a small board', async ({ browser }) => {
+  const context = await browser.newContext({
+    hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 },
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto('http://127.0.0.1:5173/');
+    await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+
+    const from = await board(page).getByRole('button', { name: /^d2 white p/ }).boundingBox();
+    const to = await board(page).getByRole('button', { name: /^d4 empty/ }).boundingBox();
+    if (!from || !to) throw new Error('Chess square not visible in mobile viewport');
+    const point = (box: { x: number; y: number; width: number; height: number }) =>
+      ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+    const start = point(from), end = point(to);
+    const session = await page.context().newCDPSession(page);
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] });
+    for (let step = 1; step <= 12; step++) {
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{
+          x: start.x + (end.x - start.x) * step / 12,
+          y: start.y + (end.y - start.y) * step / 12,
+        }],
+      });
+      await page.waitForTimeout(12);
+    }
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
+    await expect(board(page).getByRole('button', { name: /^d4 white p/ })).toBeVisible();
+  } finally {
+    await context.close();
   }
 });
