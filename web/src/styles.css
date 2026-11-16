@@ -239,3 +239,11 @@ button:focus-visible, a:focus-visible {
 @media (max-width: 760px) {
   .drag-ghost { font-size: 53px; width: 58px; height: 58px; }
 }
+
+/* Deliberate game-ending actions: visible but secondary to play. */
+.result-actions { display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.result-actions .btn-secondary { min-height: 38px; }
+.resign-action { color: #903c32; border-color: #dfcfca; }
+.resign-action:hover:not(:disabled) { background: #f9eeeb; }
+.game-notice { padding: 10px 12px; margin-bottom: 14px; border: 1px solid #bfd1bb; background: #f3f8f0; color: #36513b; border-radius: 5px; font-size: 13px; }
+.history-help { font-size: 12px; color: #707c72; margin: 13px 0 -5px; }

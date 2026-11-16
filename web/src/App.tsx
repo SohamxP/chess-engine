@@ -241,6 +241,8 @@ export default function App() {
   const [thinking, setThinking] = useState(false);
   const [motion, setMotion] = useState<PieceMotion | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [confirmResign, setConfirmResign] = useState(false);
   const [dismissedResult, setDismissedResult] = useState<string | null>(null);
   // null follows the live match; 0 is the starting position; N is after ply N.
   const [reviewPly, setReviewPly] = useState<number | null>(null);
@@ -278,6 +280,8 @@ export default function App() {
   async function newGame(white: boolean, depth: number, oldId?: string) {
     setBusy(true);
     setError(null);
+    setNotice(null);
+    setConfirmResign(false);
     setMotion(null);
     setDismissedResult(null);
     setReviewPly(null);
@@ -308,30 +312,73 @@ export default function App() {
   }, [game?.moveHistory.length, reviewPly]);
 
   useEffect(() => {
+    const moveCount = game?.moveHistory.length ?? 0;
     function handleArrow(event: KeyboardEvent) {
-      if ((event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')
-          || event.altKey || event.ctrlKey || event.metaKey
-          || !game || document.querySelector('[role="dialog"]')) return;
-      const tag = (event.target as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const left = event.key === 'ArrowLeft' || event.code === 'ArrowLeft';
+      const right = event.key === 'ArrowRight' || event.code === 'ArrowRight';
+      if ((!left && !right) || event.altKey || event.ctrlKey || event.metaKey
+          || moveCount === 0 || document.querySelector('[aria-label="Choose promotion piece"]')
+          || document.querySelector('[aria-label="Confirm resignation"]')) return;
+      const element = event.target instanceof HTMLElement ? event.target : null;
+      if (element?.isContentEditable ||
+          ['INPUT', 'TEXTAREA', 'SELECT'].includes(element?.tagName ?? '')) return;
+      // Result popups used to silently block both arrow keys. A navigation
+      // keystroke now dismisses the popup and opens read-only history.
       event.preventDefault();
-      setReviewPly(cursor => stepHistory(cursor, game.moveHistory.length,
-        event.key === 'ArrowLeft' ? -1 : 1));
+      if (game?.status !== 'IN_PROGRESS') {
+        setDismissedResult(game!.id + ':' + game!.status + ':' + moveCount);
+      }
+      setReviewPly(cursor => stepHistory(cursor, moveCount, left ? -1 : 1));
     }
-    window.addEventListener('keydown', handleArrow);
-    return () => window.removeEventListener('keydown', handleArrow);
-  }, [game?.id, game?.moveHistory.length]);
+    // Capture lets shortcuts work even when a move-list button has focus.
+    window.addEventListener('keydown', handleArrow, { capture: true });
+    return () => window.removeEventListener('keydown', handleArrow, { capture: true });
+  }, [game?.id, game?.status, game?.moveHistory.length]);
 
   async function makeMove(move: LegalMove) {
     if (!game || busy || game.aiTurn) return;
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const after = await api.move(game.id, move);
       await showMove(game, after);
       await replyFromEngine(after);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Move failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resign() {
+    if (!game || busy || game.status !== 'IN_PROGRESS') return;
+    setConfirmResign(false);
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    setReviewPly(null);
+    try {
+      setGame(await api.resign(game.id));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not resign.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function offerDraw() {
+    if (!game || busy || game.status !== 'IN_PROGRESS' || game.aiTurn) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    setReviewPly(null);
+    try {
+      const offer = await api.offerDraw(game.id);
+      setGame(offer.game);
+      setNotice(offer.message);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not offer a draw.');
     } finally {
       setBusy(false);
     }
@@ -461,6 +508,7 @@ export default function App() {
                         'Starting your match.'}
               </p>
               {error && <div className="error-message" role="alert">{error}</div>}
+              {notice && <div className="game-notice" role="status">{notice}</div>}
               <div className="action-row">
                 <button type="button" className="btn-primary" disabled={busy}
                   onClick={() => void newGame(playAsWhite, difficulty, game?.id)}>
@@ -470,6 +518,14 @@ export default function App() {
                   disabled={busy || !game?.canUndo}
                   onClick={() => void undo()}>Undo</button>
               </div>
+              {game?.status === 'IN_PROGRESS' && (
+                <div className="result-actions">
+                  <button type="button" className="btn-secondary" disabled={busy || game.aiTurn}
+                    onClick={() => void offerDraw()}>Offer draw</button>
+                  <button type="button" className="btn-secondary resign-action" disabled={busy}
+                    onClick={() => setConfirmResign(true)}>Resign</button>
+                </div>
+              )}
               {game?.aiTurn && !busy && (
                 <button type="button" className="retry-button"
                   onClick={() => {
@@ -517,6 +573,7 @@ export default function App() {
             <section className="panel moves-panel">
               <div className="panel-heading"><h2>Moves</h2>
                 <span className="move-count">{game?.moveHistory.length ?? 0} MOVES</span></div>
+              <p className="history-help">Use the buttons or ← → keys to replay moves.</p>
               <div className="history-navigation" aria-label="Move review controls">
                 <button type="button" aria-label="First position"
                   onClick={() => setReviewPly(0)} disabled={!game || game.moveHistory.length === 0}>⟪</button>
@@ -573,6 +630,20 @@ export default function App() {
         <span>OpenFile Chess</span><span>Built with Java and React</span>
       </footer>
 
+      {confirmResign && (
+        <div className="result-cover">
+          <div className="result-card" role="dialog" aria-modal="true"
+            aria-label="Confirm resignation">
+            <div className="result-eyebrow">End the game?</div>
+            <h2>Resign this match</h2>
+            <p>Resigning gives the win to the computer. You cannot take back a resignation.</p>
+            <button type="button" className="btn-primary"
+              onClick={() => void resign()}>Confirm resignation</button>
+            <button type="button" className="btn-secondary"
+              onClick={() => setConfirmResign(false)}>Keep playing</button>
+          </div>
+        </div>
+      )}
       {game && score && showResult && (
         <div className="result-cover">
           <div className="result-card" role="dialog" aria-modal="true"

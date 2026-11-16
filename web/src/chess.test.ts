@@ -108,6 +108,12 @@ describe('chess UI board helpers', () => {
 
   it('uses official result scores for mate and draws', () => {
     expect(resultScore({ status: 'IN_PROGRESS', whiteToMove: true })).toBeNull();
+    expect(resultScore({ status: 'WHITE_RESIGNED', whiteToMove: true })).toBe('0-1');
+    expect(resultScore({ status: 'BLACK_RESIGNED', whiteToMove: false })).toBe('1-0');
+    expect(resultScore({ status: 'DRAW_AGREEMENT', whiteToMove: true })).toBe('1/2-1/2');
+    expect(statusLabel({ status: 'WHITE_RESIGNED' } as GameState)).toContain('Black wins');
+    expect(statusLabel({ status: 'BLACK_RESIGNED' } as GameState)).toContain('White wins');
+    expect(statusLabel({ status: 'DRAW_AGREEMENT' } as GameState)).toContain('agreement');
     expect(resultScore({ status: 'CHECKMATE', whiteToMove: false })).toBe('1-0');
     expect(resultScore({ status: 'CHECKMATE', whiteToMove: true })).toBe('0-1');
     expect(resultScore({ status: 'STALEMATE', whiteToMove: true })).toBe('1/2-1/2');
