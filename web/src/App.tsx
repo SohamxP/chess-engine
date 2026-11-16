@@ -429,7 +429,7 @@ export default function App() {
       {game && score && showResult && (
         <div className="result-cover">
           <div className="result-card" role="dialog" aria-modal="true"
-            aria-label="Game result" aria-labelledby="result-title">
+            aria-label="Game result">
             <div className="result-eyebrow">Game finished</div>
             <div className="result-score">{score}</div>
             <h2 id="result-title">{status}</h2>
