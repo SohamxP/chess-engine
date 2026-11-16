@@ -258,7 +258,7 @@ export default function App() {
   const [review, setReview] = useState<ReviewState | null>(null);
 
   function openReview(ply = 0) {
-    if (!game || !game.moveHistory.length || busy) return;
+    if (!game || busy) return;
     setReviewPly(Math.max(0, Math.min(game.moveHistory.length, ply)));
     setDismissedResult(game.id + ':' + game.status + ':' + game.moveHistory.length);
     if (!onReview) {

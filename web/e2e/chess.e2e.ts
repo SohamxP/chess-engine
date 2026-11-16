@@ -62,6 +62,7 @@ test('promotion chooser sends the selected underpromotion (mocked near-promotion
   const game = {
     id: '00000000-0000-0000-0000-000000000001',
     fen: '7k/P7/8/8/8/8/8/4K3 w - - 0 1',
+    initialFen: '7k/P7/8/8/8/8/8/4K3 w - - 0 1',
     status: 'IN_PROGRESS',
     whiteToMove: true,
     inCheck: false,
@@ -94,7 +95,8 @@ test('promotion chooser sends the selected underpromotion (mocked near-promotion
         status: 'DRAW_INSUFFICIENT_MATERIAL',
         whiteToMove: false,
         legalMoves: [],
-        moveHistory: [{ ply: 1, white: true, ai: false, uci: 'a7a8n', san: 'a8=N' }],
+        moveHistory: [{ ply: 1, white: true, ai: false, uci: 'a7a8n', san: 'a8=N',
+          fen: 'N6k/8/8/8/8/8/8/4K3 b - - 0 1' }],
         lastMove: { from: 'a7', to: 'a8', promotion: 'N' },
       },
     });
@@ -278,7 +280,7 @@ test('game result dialog shows official scores for either winner and drawn games
     ['STALEMATE', false, '1/2-1/2'],
   ] as const) {
     data = { ...game, status, whiteToMove };
-    await page.reload();
+    await page.goto('/');
     await expect(page.getByRole('dialog', { name: 'Game result' })).toBeVisible();
     await expect(page.locator('.result-score')).toHaveText(expected);
     await page.getByRole('button', { name: 'Review board' }).click();
@@ -425,8 +427,9 @@ test('resigning shows the correct game result and requires confirmation', async 
   await expect(page.getByRole('dialog', { name: 'Game result' })).toBeVisible();
   await expect(page.locator('.result-score')).toHaveText('0-1');
   await page.getByRole('button', { name: 'Review board' }).click();
-  await expect(page.getByText('Black wins · White resigned')).toBeVisible();
-  await expect(board(page).getByRole('button', { name: /^e2 white p/ })).toBeDisabled();
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
+  await expect(page.getByText('0-1', { exact: true })).toBeVisible();
+  await expect(board(page).getByRole('button', { name: /^e2 empty/ })).toBeDisabled();
 });
 
 test('offering a draw can be declined and game continues without changing position', async ({ page }) => {
@@ -491,8 +494,8 @@ test('dedicated page runs Stockfish and displays SAN feedback on mobile', async 
 
 
 test('captured pawn appears beneath player name and updates during SAN history review', async ({ page }) => {
-  const initial = '4k2r/8/8/8/4p3/8/8/4R1K1 w - - 0 1';
-  const final = '4k2r/8/8/8/4R3/8/8/6K1 b - - 0 1';
+  const initial = '4k2r/8/8/8/4p3/8/P7/4R1K1 w - - 0 1';
+  const final = '4k2r/8/8/8/4R3/8/P7/6K1 b - - 0 1';
   const game = {
     id: '00000000-0000-0000-0000-000000000056',
     fen: final, initialFen: initial, status: 'IN_PROGRESS',
