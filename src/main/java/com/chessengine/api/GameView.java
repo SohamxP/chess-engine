@@ -39,7 +39,7 @@ public record GameView(
         }
     }
 
-    public record MoveEntry(int ply, boolean white, boolean ai, String uci) { }
+    public record MoveEntry(int ply, boolean white, boolean ai, String uci, String san) { }
 
     public record AiStats(int depth, int scoreCentipawns, long nodesVisited,
                           long alphaBetaCutoffs, long transpositionHits, long quiescenceNodes) {
