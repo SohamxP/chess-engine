@@ -285,7 +285,7 @@ button:focus-visible, a:focus-visible {
 /* Captured material beneath each player name, like a traditional chess board. */
 .player-details { min-width: 0; flex: 1 1 auto; }
 .captured-pieces { display: flex; align-items: center; flex-wrap: wrap; gap: 1px; min-height: 18px; margin-top: 2px; }
-.captured-piece {
+.player-details .captured-piece {
   display: inline-block; font: 19px/1 "DejaVu Sans", "Segoe UI Symbol", "Arial Unicode MS", serif;
   letter-spacing: -3px; padding-right: 3px;
 }
