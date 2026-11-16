@@ -6,24 +6,23 @@ import com.chessengine.game.Game;
 import com.chessengine.game.GameStatus;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
- * A depth-limited negamax chess searcher with alpha-beta pruning.
+ * Fixed-depth negamax AI enhanced by iterative deepening, alpha-beta pruning,
+ * a history-aware transposition table, and tactical quiescence search.
  *
- * <p>Every branch starts from an independent Game snapshot, preserving the
- * position-history information needed for fivefold repetition. It never
- * modifies the caller's game. Scores are in centipawns from the current
- * side's perspective, with scores near +/-100000 reserved for checkmate.
- * Draw claims are left to the player; automatic draws terminate search.
- *
- * <p>This is a deterministic baseline engine, without opening books,
- * time limits, transposition tables or quiescence search.
+ * <p>The input game is never mutated. Scores use centipawns from the side to
+ * move and +/-100000 for mate. This deliberately does not auto-claim draws.
+ * There is no time budget or UCI interface yet.
  */
 public final class ChessAI {
     public static final int MATE_SCORE = 100_000;
     private static final int INFINITY = 1_000_000;
+    private static final int MAX_QUIESCENCE_PLY = 8;
 
     private final PositionEvaluator evaluator = new PositionEvaluator();
 
@@ -31,64 +30,96 @@ public final class ChessAI {
         return search(game, depth).bestMove();
     }
 
+    /** Uses all completed depths from one through {@code depth}. */
     public SearchResult search(Game game, int depth) {
         return runSearch(game, depth, true);
     }
 
-    /** Reference minimax search to benchmark alpha-beta's node savings. */
+    /** Baseline: same evaluation and quiescence rules without alpha-beta or TT. */
     public SearchResult searchWithoutPruning(Game game, int depth) {
         return runSearch(game, depth, false);
     }
 
-    private SearchResult runSearch(Game game, int depth, boolean useAlphaBeta) {
+    private SearchResult runSearch(Game game, int depth, boolean enhanced) {
         Objects.requireNonNull(game, "game");
         if (depth < 1) throw new IllegalArgumentException("Search depth must be >= 1");
-
         Game root = game.copy();
         GameStatus status = root.getStatus();
         if (status != GameStatus.IN_PROGRESS) {
-            return new SearchResult(null, terminalScore(status, 0), depth, 1, 0);
+            return new SearchResult(null, terminalScore(status, 0), depth, 1, 0, 0, 0);
         }
 
         SearchStats stats = new SearchStats();
-        int alpha = -INFINITY;
-        int bestScore = -INFINITY;
-        Move bestMove = null;
-        for (Move move : orderedMoves(root)) {
-            Game child = root.copy();
-            if (!child.makeMove(move)) throw new IllegalStateException("Generated move is not legal: " + move);
-            int score = -negamax(child, depth - 1, -INFINITY, -alpha,
-                    1, stats, useAlphaBeta);
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
+        Map<String, Transposition> table = new HashMap<>();
+        List<Move> rootMoves = orderedMoves(root, null);
+        Move chosen = null;
+        int chosenScore = -INFINITY;
+        int firstDepth = enhanced ? 1 : depth;
+        for (int iteration = firstDepth; iteration <= depth; iteration++) {
+            int alpha = -INFINITY;
+            int bestScore = -INFINITY;
+            Move bestMove = null;
+            // Root ordering remains stable so equal-scored moves are deterministic.
+            for (Move move : rootMoves) {
+                Game child = apply(root, move);
+                int score = -negamax(child, iteration - 1, -INFINITY,
+                        enhanced ? -alpha : INFINITY, 1, stats, table, enhanced);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMove = move;
+                }
+                if (enhanced) alpha = Math.max(alpha, score);
             }
-            if (useAlphaBeta) alpha = Math.max(alpha, score);
+            chosen = bestMove;
+            chosenScore = bestScore;
         }
-        return new SearchResult(bestMove, bestScore, depth,
-                stats.nodes, stats.cutoffs);
+        return new SearchResult(chosen, chosenScore, depth, stats.nodes,
+                stats.cutoffs, stats.transpositionHits, stats.quiescenceNodes);
     }
 
-    private int negamax(Game position, int remainingDepth, int alpha, int beta,
-                        int ply, SearchStats stats, boolean prune) {
+    private int negamax(Game position, int remaining, int alpha, int beta, int ply,
+                        SearchStats stats, Map<String, Transposition> table, boolean enhanced) {
+        if (remaining == 0) {
+            return quiescence(position, alpha, beta, ply, 0, stats, enhanced);
+        }
         stats.nodes++;
         GameStatus status = position.getStatus();
         if (status != GameStatus.IN_PROGRESS) return terminalScore(status, ply);
-        if (remainingDepth == 0) {
-            int whiteScore = evaluator.evaluate(position.getBoard());
-            return position.isWhiteToMove() ? whiteScore : -whiteScore;
+
+        int originalAlpha = alpha;
+        int originalBeta = beta;
+        String key = null;
+        Move preferred = null;
+        if (enhanced) {
+            key = position.getSearchKey();
+            Transposition stored = table.get(key);
+            if (stored != null) {
+                stats.transpositionHits++;
+                preferred = stored.move;
+                if (stored.depth >= remaining) {
+                    if (stored.type == Bound.EXACT) return stored.score;
+                    if (stored.type == Bound.LOWER) alpha = Math.max(alpha, stored.score);
+                    if (stored.type == Bound.UPPER) beta = Math.min(beta, stored.score);
+                    if (alpha >= beta) {
+                        stats.cutoffs++;
+                        return stored.score;
+                    }
+                }
+            }
         }
 
-        int bestScore = -INFINITY;
-        for (Move move : orderedMoves(position)) {
-            Game child = position.copy();
-            if (!child.makeMove(move)) throw new IllegalStateException("Generated move is not legal: " + move);
-            int score = -negamax(child, remainingDepth - 1,
-                    prune ? -beta : -INFINITY,
-                    prune ? -alpha : INFINITY,
-                    ply + 1, stats, prune);
-            bestScore = Math.max(bestScore, score);
-            if (prune) {
+        int best = -INFINITY;
+        Move bestMove = null;
+        for (Move move : orderedMoves(position, preferred)) {
+            int score = -negamax(apply(position, move), remaining - 1,
+                    enhanced ? -beta : -INFINITY,
+                    enhanced ? -alpha : INFINITY,
+                    ply + 1, stats, table, enhanced);
+            if (score > best) {
+                best = score;
+                bestMove = move;
+            }
+            if (enhanced) {
                 alpha = Math.max(alpha, score);
                 if (alpha >= beta) {
                     stats.cutoffs++;
@@ -96,18 +127,80 @@ public final class ChessAI {
                 }
             }
         }
-        return bestScore;
+        if (enhanced) {
+            Bound bound = best <= originalAlpha ? Bound.UPPER
+                    : best >= originalBeta ? Bound.LOWER : Bound.EXACT;
+            Transposition old = table.get(key);
+            if (old == null || remaining >= old.depth) {
+                table.put(key, new Transposition(remaining, best, bound, bestMove));
+            }
+        }
+        return best;
+    }
+
+    private int quiescence(Game position, int alpha, int beta, int ply,
+                           int qPly, SearchStats stats, boolean enhanced) {
+        stats.nodes++;
+        stats.quiescenceNodes++;
+        GameStatus status = position.getStatus();
+        if (status != GameStatus.IN_PROGRESS) return terminalScore(status, ply);
+
+        Board board = position.getBoard();
+        int whiteScore = evaluator.evaluate(board);
+        int standPat = position.isWhiteToMove() ? whiteScore : -whiteScore;
+        if (qPly >= MAX_QUIESCENCE_PLY) return standPat;
+
+        boolean inCheck = position.isInCheck();
+        int best = inCheck ? -INFINITY : standPat;
+        if (!inCheck && enhanced) {
+            if (best >= beta) {
+                stats.cutoffs++;
+                return best;
+            }
+            alpha = Math.max(alpha, best);
+        }
+
+        for (Move move : orderedMoves(position, null)) {
+            if (!inCheck && !isTactical(board, move)) continue;
+            int score = -quiescence(apply(position, move),
+                    enhanced ? -beta : -INFINITY,
+                    enhanced ? -alpha : INFINITY,
+                    ply + 1, qPly + 1, stats, enhanced);
+            best = Math.max(best, score);
+            if (enhanced) {
+                alpha = Math.max(alpha, score);
+                if (alpha >= beta) {
+                    stats.cutoffs++;
+                    break;
+                }
+            }
+        }
+        return best;
+    }
+
+    private static boolean isTactical(Board board, Move move) {
+        char mover = board.getPiece(move.getFromRow(), move.getFromCol());
+        return board.getPiece(move.getToRow(), move.getToCol()) != '.'
+                || move.getPromotion() != '\0'
+                || (Character.toLowerCase(mover) == 'p'
+                    && move.getFromCol() != move.getToCol()); // en passant
+    }
+
+    private static Game apply(Game position, Move move) {
+        Game child = position.copy();
+        if (!child.makeMove(move)) throw new IllegalStateException("Generated illegal move: " + move);
+        return child;
     }
 
     private static int terminalScore(GameStatus status, int ply) {
         return status == GameStatus.CHECKMATE ? -MATE_SCORE + ply : 0;
     }
 
-    private List<Move> orderedMoves(Game game) {
-        Board board = game.getBoard();
-        List<Move> moves = new ArrayList<>(game.getAllLegalMoves());
-        // Stable sort: equal priorities preserve row/column move-generation order.
-        moves.sort(Comparator.comparingInt((Move move) -> priority(board, move)).reversed());
+    private List<Move> orderedMoves(Game position, Move preferred) {
+        Board board = position.getBoard();
+        List<Move> moves = new ArrayList<>(position.getAllLegalMoves());
+        moves.sort(Comparator.comparingInt((Move move) ->
+                (move.equals(preferred) ? 1_000_000 : 0) + priority(board, move)).reversed());
         return moves;
     }
 
@@ -119,21 +212,18 @@ public final class ChessAI {
             score += 10_000 + PositionEvaluator.pieceValue(target) * 10
                     - PositionEvaluator.pieceValue(mover);
         } else if (Character.toLowerCase(mover) == 'p'
-                && move.getFromCol() != move.getToCol()) {
-            score += 10_000; // En passant capture.
-        }
-        if (move.getPromotion() != '\0') {
-            score += 7_000 + PositionEvaluator.pieceValue(move.getPromotion());
-        }
-        int col = move.getToCol();
-        int row = move.getToRow();
-        score += 6 - Math.min(Math.abs(col - 3), Math.abs(col - 4))
-                   - Math.min(Math.abs(row - 3), Math.abs(row - 4));
-        return score;
+                && move.getFromCol() != move.getToCol()) score += 10_000;
+        if (move.getPromotion() != '\0') score += 7_000 + PositionEvaluator.pieceValue(move.getPromotion());
+        return score + 6 - Math.min(Math.abs(move.getToCol() - 3), Math.abs(move.getToCol() - 4))
+                - Math.min(Math.abs(move.getToRow() - 3), Math.abs(move.getToRow() - 4));
     }
 
+    private enum Bound { EXACT, LOWER, UPPER }
+    private record Transposition(int depth, int score, Bound type, Move move) {}
     private static final class SearchStats {
-        private long nodes;
-        private long cutoffs;
+        long nodes;
+        long cutoffs;
+        long transpositionHits;
+        long quiescenceNodes;
     }
 }

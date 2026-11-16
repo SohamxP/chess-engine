@@ -2,7 +2,7 @@
 
 An educational chess engine built in Java. The project supports legal moves,
 all standard special moves, game termination, and a first-generation AI
-built with **negamax search and alpha-beta pruning**.
+built with **negamax, alpha-beta pruning, iterative deepening, and tactical quiescence search**.
 
 ## Features
 
@@ -11,6 +11,9 @@ built with **negamax search and alpha-beta pruning**.
 - FEN import/export and complete game state tracking.
 - AI evaluation using material values and piece placement.
 - Deterministic move selection with capture and promotion ordering.
+- Iterative deepening reuses a transposition table across search depths.
+- Tactical quiescence explores captures, promotions, and check evasions.
+- Transposition entries account for repetition history, not just FEN.
 - Benchmarkable alpha-beta pruning versus unpruned minimax.
 - Java 25, Maven, JUnit 5, and GitHub Actions.
 
@@ -28,6 +31,8 @@ built with **negamax search and alpha-beta pruning**.
     System.out.println("Score (centipawns): " + result.scoreCentipawns());
     System.out.println("Nodes visited: " + result.nodesVisited());
     System.out.println("Alpha-beta cutoffs: " + result.alphaBetaCutoffs());
+    System.out.println("Transposition hits: " + result.transpositionHits());
+    System.out.println("Quiescence nodes: " + result.quiescenceNodes());
 
     if (result.bestMove() != null) {
         game.playMove(result.bestMove());
@@ -50,7 +55,8 @@ The GitHub Actions workflow runs on PRs and feature branches.
 ## Current limitations
 
 This is a foundational AI, not yet a competitive tournament engine. It uses
-fixed-depth search and has no quiescence search, transposition tables,
-iterative deepening, time management, opening book, or graphical UI.
-Deeper searches require exponentially more work. Next stages can improve
-search strength and add an interactive interface.
+fixed maximum-depth search with iterative deepening and a limited tactical
+quiescence extension. It has no time management, opening book, or graphical UI.
+The history-aware transposition key prioritizes correctness over memory
+usage. Deeper searches remain exponentially expensive; next stages can add
+time control, a UI, and further search optimizations.
