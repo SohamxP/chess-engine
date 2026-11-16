@@ -18,5 +18,18 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
-      - name: Run Maven suite
+      - name: Run Java engine and REST API tests
         run: mvn --batch-mode clean verify
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm install --no-audit --no-fund
+      - name: Run React frontend unit tests
+        working-directory: web
+        run: npm test
+      - name: Type-check and build React UI
+        working-directory: web
+        run: npm run build

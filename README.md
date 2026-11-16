@@ -1,62 +1,91 @@
-# Java Chess Engine
+# OpenFile Chess — Java Engine + React
 
-An educational chess engine built in Java. The project supports legal moves,
-all standard special moves, game termination, and a first-generation AI
-built with **negamax, alpha-beta pruning, iterative deepening, and tactical quiescence search**.
+A full-stack human-versus-engine chess game. The **Java 25 chess engine** owns
+all move legality, game termination, position evaluation, and AI search. A
+**React 19 / TypeScript / Vite** frontend displays the board, valid destinations,
+move history and match settings. Spring Boot exposes the engine over a REST API.
 
-## Features
+## Requirements
 
-- Legal move generation with king safety, castling, en passant, and promotion.
-- Checkmate, stalemate, repetition and move-count draw rules.
-- FEN import/export and complete game state tracking.
-- AI evaluation using material values and piece placement.
-- Deterministic move selection with capture and promotion ordering.
-- Iterative deepening reuses a transposition table across search depths.
-- Tactical quiescence explores captures, promotions, and check evasions.
-- Transposition entries account for repetition history, not just FEN.
-- Benchmarkable alpha-beta pruning versus unpruned minimax.
-- Java 25, Maven, JUnit 5, and GitHub Actions.
+- JDK 25 and Maven
+- Node.js 22 and npm
 
-## Use the AI
+## Run locally
 
-    import com.chessengine.ai.ChessAI;
-    import com.chessengine.ai.SearchResult;
-    import com.chessengine.game.Game;
+Open two terminals in the repository root:
 
-    Game game = new Game();
-    ChessAI ai = new ChessAI();
+**Terminal 1 — Java API on port 8080**
 
-    SearchResult result = ai.search(game, 3);
-    System.out.println("Best move: " + result.bestMove());
-    System.out.println("Score (centipawns): " + result.scoreCentipawns());
-    System.out.println("Nodes visited: " + result.nodesVisited());
-    System.out.println("Alpha-beta cutoffs: " + result.alphaBetaCutoffs());
-    System.out.println("Transposition hits: " + result.transpositionHits());
-    System.out.println("Quiescence nodes: " + result.quiescenceNodes());
+```sh
+mvn spring-boot:run
+```
 
-    if (result.bestMove() != null) {
-        game.playMove(result.bestMove());
-    }
+**Terminal 2 — React development server on port 5173**
 
-The returned move uses the engine's row/column coordinates and an optional
-promotion piece. A null best move means the game has ended.
+```sh
+cd web
+npm install
+npm run dev
+```
 
-Search scores are expressed from the **side-to-move perspective**, whereas
-PositionEvaluator.evaluate(Board) is positive for White. Checkmate scores
-are +/-100000 adjusted for mate distance. Claimable draws are not claimed
-automatically.
+Open [http://localhost:5173](http://localhost:5173). Vite forwards `/api`
+requests to `http://localhost:8080`. The API does not require CORS because
+requests go through the same-origin development proxy.
 
-## Tests
+## Play
 
-    mvn clean verify
+Select a piece and click a highlighted legal square. You can play White or
+Black, select Easy (depth 1), Medium (depth 2) or Hard (depth 3), undo an
+entire human/AI turn, claim eligible draws, and start a new match. The board
+flips when you play Black. Pawn promotion supports Queen, Rook, Bishop or Knight.
+When playing Black, the engine makes the opening move first.
 
-The GitHub Actions workflow runs on PRs and feature branches.
+The browser sends the human move, displays it immediately, then requests the
+engine reply independently. If a reply fails, use **Retry engine move**; the
+game remains stored in the Java process.
 
-## Current limitations
+## REST API
 
-This is a foundational AI, not yet a competitive tournament engine. It uses
-fixed maximum-depth search with iterative deepening and a limited tactical
-quiescence extension. It has no time management, opening book, or graphical UI.
-The history-aware transposition key prioritizes correctness over memory
-usage. Deeper searches remain exponentially expensive; next stages can add
-time control, a UI, and further search optimizations.
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| POST | `/api/games` | New session; `{ "playAsWhite": true, "depth": 2 }` |
+| GET | `/api/games/{id}` | Current FEN, legal moves, status, history |
+| POST | `/api/games/{id}/moves` | Human move: `{ "from": "e2", "to": "e4" }` |
+| POST | `/api/games/{id}/ai` | Compute the engine's reply |
+| POST | `/api/games/{id}/undo` | Undo the last human move and AI reply |
+| POST | `/api/games/{id}/claims` | `{ "claim": "THREEFOLD_REPETITION" }` or `FIFTY_MOVE_RULE` |
+| DELETE | `/api/games/{id}` | Discard a session |
+
+Promotions use an optional `promotion` value of `Q`, `R`, `B`, or `N`.
+All game rules are validated server-side. Invalid moves return HTTP 400,
+conflicting turns return HTTP 409, and unknown session IDs return HTTP 404.
+
+## Test
+
+```sh
+mvn clean verify
+cd web
+npm install
+npm test
+npm run build
+```
+
+The **required GitHub Actions `test` job** runs the Java tests and frontend
+tests, type-check and production build. No merge should happen until that
+check passes on the PR.
+
+## Current limits
+
+Game sessions are **in memory**, and are lost when the Java process restarts.
+This project currently has no accounts, multiplayer, persistence, or deployed
+production instance. AI difficulty changes search depth rather than time
+budget; depth 3 may be slower on some positions. The React development server
+requires the Java API to be running separately.
+
+## Under the hood
+
+The Java chess engine implements legal moves, castling, en passant, promotion,
+checkmate, stalemate, repetition and move-count draws. AI uses fixed maximum
+search depth, iterative deepening, negamax, alpha-beta pruning, quiescence
+search, and a history-aware transposition table. Search is deterministic and
+does not alter the user's current game.
