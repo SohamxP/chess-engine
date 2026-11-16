@@ -317,6 +317,11 @@ test('opening SAN history navigates to a dedicated review URL, and back preserve
   await page.getByRole('button', { name: 'View position after move 1: e4' }).click();
   await expect(page).toHaveURL(/\?review=/);
   await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
+  // A direct reload retrieves the same session from the Java API.
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
+  await expect(board(page)).toHaveAttribute('data-review-ply', '0');
+  await page.getByRole('button', { name: 'View position after move 1: e4' }).click();
   await expect(board(page)).toHaveAttribute('data-review-ply', '1');
   await expect(board(page).getByRole('button', { name: /^e4 white p/ })).toBeDisabled();
 
