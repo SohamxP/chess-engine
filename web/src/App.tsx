@@ -245,7 +245,7 @@ export default function App() {
   // null follows the live match; 0 is the starting position; N is after ply N.
   const [reviewPly, setReviewPly] = useState<number | null>(null);
   const mounted = useRef(false);
-  const historyEnd = useRef<HTMLDivElement>(null);
+  const historyList = useRef<HTMLDivElement>(null);
 
   async function showMove(before: GameState, after: GameState) {
     const move = after.lastMove;
@@ -300,7 +300,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (reviewPly === null) historyEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Keep history scrolling inside its own panel. scrollIntoView on a child
+    // used to scroll the entire mobile page away from the chess board.
+    if (reviewPly === null && historyList.current && game?.moveHistory.length) {
+      historyList.current.scrollTop = historyList.current.scrollHeight;
+    }
   }, [game?.moveHistory.length, reviewPly]);
 
   useEffect(() => {
@@ -528,7 +532,7 @@ export default function App() {
               <div className="move-table-head">
                 <span>Move</span><span>White</span><span>Black</span>
               </div>
-              <div className="move-list" aria-label="Move history">
+              <div className="move-list" aria-label="Move history" ref={historyList}>
                 {movePairs.length ? movePairs.map(pair => (
                   <div className="move-pair" key={pair.number}>
                     <span className="move-number">{pair.number}.</span>
@@ -548,7 +552,6 @@ export default function App() {
                       : <span>—</span>}
                   </div>
                 )) : <div className="no-moves">Moves will appear here as you play.</div>}
-                <div ref={historyEnd} />
               </div>
             </section>
 
