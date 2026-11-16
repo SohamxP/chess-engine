@@ -36,6 +36,20 @@ public class Game {
         recordPosition();
     }
 
+    /**
+     * Returns an independent game snapshot, including repetition history
+     * and any claimed draw. Safe to explore from a search algorithm.
+     */
+    public Game copy() {
+        return new Game(board.copy(), positionCounts, claimedDraw);
+    }
+
+    private Game(Board board, Map<String, Integer> history, GameStatus claimedDraw) {
+        this.board = board;
+        this.positionCounts.putAll(history);
+        this.claimedDraw = claimedDraw;
+    }
+
     public Board getBoard() { return board.copy(); }
     public String toFen() { return board.toFen(); }
     public boolean isWhiteToMove() { return board.isWhiteToMove(); }
