@@ -14,3 +14,14 @@
 @media(max-width:980px){.topbar{padding:0 25px}.main-content{padding:36px 24px 45px}.play-layout{grid-template-columns:minmax(0,1fr) minmax(290px,330px);gap:20px}.panel{padding:19px}.board-frame{padding:6px}.square .piece{font-size:clamp(22px,5.2vw,50px)}}
 @media(max-width:760px){.topbar{height:69px;padding:0 17px}.topbar-caption{display:none}.live-pill{margin-left:auto;font-size:9px}.main-content{padding:26px 14px 38px}.intro{margin:0 7px 20px}.intro h1{font-size:40px}.play-layout{grid-template-columns:minmax(0,1fr);gap:20px}.board-column{max-width:600px;margin:0 auto;width:100%}.square .piece{font-size:clamp(27px,9.5vw,65px)}.sidebar{max-width:600px;width:100%;margin:0 auto}.site-footer{padding:18px 20px;gap:9px;flex-wrap:wrap;font-size:9px}.site-footer span:nth-child(2){display:none}.board-footnote{font-size:9px}}
 @media(max-width:390px){.brand{font-size:11px;letter-spacing:.09em}.live-pill{padding:8px}.square .piece{font-size:clamp(23px,9vw,36px)}.rank-label,.file-label{font-size:9px}.panel{padding:17px}.board-footnote{font-size:8px}}
+
+/* Render an AI reply as a travelling piece rather than an instantaneous jump.
+   The destination piece stays hidden until the flight finishes. */
+.board{position:relative}
+.motion-destination{visibility:hidden}
+.piece-flight{position:absolute;width:12.5%;height:12.5%;display:grid;place-items:center;z-index:6;pointer-events:none;font-family:'DejaVu Sans','Segoe UI Symbol','Arial Unicode MS',serif;font-size:clamp(24px,5vw,57px);font-weight:400;line-height:1;animation:piece-flight 420ms ease-in-out both}
+@keyframes piece-flight{from{transform:translate(0,0)}to{transform:translate(var(--flight-x),var(--flight-y))}}
+@media(max-width:980px){.piece-flight{font-size:clamp(22px,5.2vw,50px)}}
+@media(max-width:760px){.piece-flight{font-size:clamp(27px,9.5vw,65px)}}
+@media(max-width:390px){.piece-flight{font-size:clamp(23px,9vw,36px)}}
+@media(prefers-reduced-motion:reduce){.piece-flight{animation:none;transform:translate(var(--flight-x),var(--flight-y))}}
