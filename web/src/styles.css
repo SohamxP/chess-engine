@@ -280,3 +280,72 @@ button:focus-visible, a:focus-visible {
 .review-flagged-list button span { color: #8f4937; font-size: 11px; }
 .review-license { font-size: 10px; line-height: 1.5; color: #8a9289; margin: 17px 0 0; }
 .review-license a { text-decoration: underline; }
+
+
+/* Captured material beneath each player name, like a traditional chess board. */
+.player-details { min-width: 0; flex: 1 1 auto; }
+.captured-pieces { display: flex; align-items: center; flex-wrap: wrap; gap: 1px; min-height: 18px; margin-top: 2px; }
+.captured-piece {
+  display: inline-block; font: 19px/1 "DejaVu Sans", "Segoe UI Symbol", "Arial Unicode MS", serif;
+  letter-spacing: -3px; padding-right: 3px;
+}
+.captured-piece.white-piece { color: #fffaf0; -webkit-text-stroke: .8px #4a544c; text-shadow: 0 1px 1px #24342a44; }
+.captured-piece.black-piece { color: #28342c; text-shadow: none; }
+.material-lead { font-size: 11px !important; font-weight: 720; color: #516b57 !important; padding-left: 5px; white-space: nowrap; }
+.review-open-button { width: 100%; margin: 10px 0 16px; }
+.review-back { color: #3c6048; background: transparent; border: 0; padding: 0 0 15px; font-size: 13px; font-weight: 700; }
+.review-back:hover { text-decoration: underline; }
+
+/* Game Review is a separate URL-based page with a board and SAN move panel. */
+.review-content { max-width: 1240px; }
+.review-page-heading { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; margin: 0 0 20px; }
+.review-page-heading h1 { font-size: 29px; margin: 0 0 5px; line-height: 1.2; letter-spacing: -.035em; }
+.review-page-heading p { color: #748074; margin: 0; font-size: 13px; line-height: 1.5; }
+.review-result { display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 3px; white-space: nowrap; }
+.review-result span { color: #718074; font-size: 11px; }
+.review-result strong { color: #314b39; font-size: 20px; }
+.review-layout { display: grid; grid-template-columns: minmax(0, 690px) minmax(280px, 390px); justify-content: center; gap: 26px; align-items: start; }
+.review-board-column { width: 100%; min-width: 0; }
+.review-board-column .board-frame { max-width: 690px; }
+.review-sidebar { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.review-sidebar .panel { padding: 20px; }
+.review-playback { display: grid; grid-template-columns: 42px 42px minmax(0, 1fr) 42px 42px; gap: 6px; align-items: center; margin-top: 12px; }
+.review-playback button { min-height: 41px; border: 1px solid #d2ddd1; background: #fff; border-radius: 5px; color: #31513c; font-size: 19px; font-weight: 700; }
+.review-playback button:hover:not(:disabled) { background: #e8f0e5; }
+.review-playback span { color: #546556; text-align: center; font-size: 12px; font-weight: 650; }
+.review-board-hint { color: #7a857b; font-size: 12px; margin: 10px 0 0; text-align: center; }
+.review-insight-card { background: #f8faf6; }
+.review-feedback-empty { padding: 22px 0 6px; }
+.review-feedback-empty strong, .review-feedback-heading strong { font-size: 17px; }
+.review-feedback-empty p, .review-feedback p { color: #617262; font-size: 12px; line-height: 1.5; margin: 9px 0 0; }
+.review-feedback { padding-top: 15px; }
+.review-feedback-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+.review-better-move { color: #315841; font-size: 13px; background: #e8f0e5; padding: 10px 12px; border-radius: 5px; margin-top: 11px; }
+.review-notation-list { max-height: 310px; min-height: 86px; }
+.review-notation-card .move-pair .move-entry { min-height: 34px; }
+.review-notation-card .move-entry.review-selected { background: #d7e8d1; }
+.review-notation-card .move-entry.notation-blunder { color: #ab3f36; }
+.review-notation-card .move-entry.notation-mistake { color: #b2762f; }
+.review-notation-card .move-entry.notation-inaccuracy { color: #8c7b42; }
+.review-mistakes .review-flagged-list { margin-top: 12px; }
+.review-mistakes .review-flagged-list button { min-height: 37px; }
+@media (max-width: 1050px) {
+  .review-layout { grid-template-columns: minmax(0, 1fr) minmax(270px, 340px); gap: 18px; }
+}
+@media (max-width: 760px) {
+  .review-content { padding-top: 16px; }
+  .review-page-heading { align-items: flex-start; margin-bottom: 15px; }
+  .review-page-heading h1 { font-size: 25px; }
+  .review-result { margin-top: 34px; }
+  .review-layout { grid-template-columns: minmax(0, 1fr); gap: 17px; }
+  .review-board-column, .review-sidebar { width: 100%; max-width: 640px; margin: 0 auto; }
+  .review-sidebar .panel { padding: 17px; }
+  .review-notation-list { max-height: 280px; }
+  .captured-piece { font-size: 18px; }
+}
+@media (max-width: 370px) {
+  .review-page-heading p { font-size: 11px; }
+  .review-result strong { font-size: 16px; }
+  .review-playback { grid-template-columns: 36px 36px minmax(0, 1fr) 36px 36px; gap: 3px; }
+  .review-playback span { font-size: 11px; }
+}
