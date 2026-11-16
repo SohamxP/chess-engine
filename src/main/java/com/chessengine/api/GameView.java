@@ -9,6 +9,7 @@ import java.util.UUID;
 public record GameView(
         UUID id,
         String fen,
+        String initialFen,
         String status,
         boolean whiteToMove,
         boolean inCheck,
@@ -39,7 +40,8 @@ public record GameView(
         }
     }
 
-    public record MoveEntry(int ply, boolean white, boolean ai, String uci, String san) { }
+    /** Exact board state after this ply, including side to move and rights. */
+    public record MoveEntry(int ply, boolean white, boolean ai, String uci, String san, String fen) { }
 
     public record AiStats(int depth, int scoreCentipawns, long nodesVisited,
                           long alphaBetaCutoffs, long transpositionHits, long quiescenceNodes) {
