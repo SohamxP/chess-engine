@@ -82,6 +82,17 @@ describe('resumable, full-length analysis pipeline', () => {
     expect(finalCached).toBeGreaterThanOrEqual(131);
   });
 
+  it('scores checkmate and stalemate without waiting for a non-existent bestmove', async () => {
+    const mate = '7k/6Q1/5K2/8/8/8/8/8 b - - 0 1';
+    const drawn = '7k/5Q2/6K1/8/8/8/8/8 b - - 0 1';
+    const { analyzePositions } = await import('./analysis');
+    const results = await analyzePositions([mate, drawn], new AbortController().signal);
+    expect(results).toEqual([
+      { cp: null, mate: 0.01, bestMove: null, depth: 10 },
+      { cp: 0, mate: null, bestMove: null, depth: 10 },
+    ]);
+  });
+
   it('uses a bounded number of deep verifications per pass on large collections', () => {
     expect(MAX_DEEP_CHECKS_PER_PASS).toBeGreaterThan(0);
     expect(MAX_DEEP_CHECKS_PER_PASS).toBeLessThanOrEqual(30);
