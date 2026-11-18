@@ -3,7 +3,7 @@ import { PlayerStrip } from './PlayerStrip';
 import type { PgnSource } from './archive';
 import { frameAtPly, resultScore, type GameState } from './chess';
 import { analysisSummary, buildReviewedMoves, formatEvaluation, numericEvaluation, uciToSan, type PositionEvaluation } from './review';
-import { MAX_REVIEW_PLIES, REVIEW_DEPTH } from './analysis';
+import { REVIEW_DEPTH, REVIEW_CONFIRM_DEPTH, type AnalysisProgress } from './analysis';
 
 export interface ReviewState {
   gameId: string;
@@ -11,6 +11,7 @@ export interface ReviewState {
   total: number;
   running: boolean;
   error: string | null;
+  progress?: AnalysisProgress;
 }
 
 export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onAnalyze, onStop, onDownload, onBuildPractice, source, isArchived = false }: {
@@ -36,6 +37,9 @@ export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onA
     && ['Blunder', 'Mistake', 'Inaccuracy'].includes(item.grade));
   const beforeFen = selected ? frameAtPly(game, selected.move.ply - 1).fen : game.initialFen;
   const betterSan = selected?.betterMove ? uciToSan(beforeFen, selected.betterMove) : null;
+  const positionDepth = review && ply > 0 && ply < review.positions.length
+    ? Math.min(review.positions[ply - 1]?.depth ?? 0, review.positions[ply]?.depth ?? 0)
+    : review?.positions[0]?.depth ?? REVIEW_DEPTH;
   // The PGN may begin at move 12 with Black to move. Use the FEN's fullmove
   // counter instead of assuming every game begins at White's first move.
   const fullMoveAt = (movePly: number): number => {
@@ -107,7 +111,8 @@ export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onA
         </section>
         <aside className="review-sidebar" aria-label="Review details">
           <section className="panel review-insight-card" aria-label="Selected move analysis">
-            <div className="panel-heading"><h2>Move feedback</h2><span className="review-engine">Depth {REVIEW_DEPTH}</span></div>
+            <div className="panel-heading"><h2>Move feedback</h2>
+              <span className="review-engine">Depth {positionDepth}</span></div>
             {ply === 0 ? (
               <div className="review-feedback-empty">
                 <strong>Starting position</strong>
@@ -123,11 +128,21 @@ export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onA
                   <>
                     <p>{selected.grade === 'Best' ? 'Matches the engine’s preferred move.'
                       : selected.grade === 'Good' ? 'No major error detected at this depth.'
-                      : selected.grade === 'Unrated' ? 'This position could not be evaluated.'
+                      : selected.grade === 'Unrated' ? (
+                          selected.pendingVerification
+                            ? 'Possible mistake detected at quick depth. Deeper verification is pending.'
+                            : 'The engine did not provide comparable scores to classify this move reliably.'
+                        )
                       : 'The engine found a potentially stronger alternative.'}</p>
                     {betterSan && <div className="review-better-move">Suggested: <strong>{betterSan}</strong></div>}
                     {selected.lossCp !== null && selected.grade !== 'Best' && (
                       <p>Estimated loss: {(selected.lossCp / 100).toFixed(2)} pawns.</p>
+                    )}
+                    {selected.grade === 'Blunder' && selected.lossCp === null && (
+                      <p>The forced-mate outcome changed. No pawn-equivalent loss is claimed.</p>
+                    )}
+                    {selected.grade !== 'Unrated' && positionDepth < REVIEW_CONFIRM_DEPTH && (
+                      <p className="review-description">Quick-depth assessment; finer errors may be missed.</p>
                     )}
                   </>
                 ) : <p>Analyze your game to see an evaluation of this move.</p>}
@@ -143,7 +158,10 @@ export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onA
               ) : review.running ? (
                 <button type="button" className="btn-secondary" onClick={onStop}>Stop analysis</button>
               ) : (
-                <button type="button" className="btn-secondary" disabled={!count} onClick={onAnalyze}>Analyze again</button>
+                <button type="button" className="btn-secondary" disabled={!count} onClick={onAnalyze}>
+                  {review.error ? 'Resume analysis'
+                    : (review.progress?.pending ?? 0) > 0 ? 'Continue verification' : 'Analyze again (cached)'}
+                </button>
               )}
             </div>
             {!count && <p className="review-description">Play some moves before analyzing.</p>}
@@ -151,12 +169,27 @@ export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onA
               <>
                 <p className="review-progress" role="status">
                   {review.running
-                    ? 'Analyzed ' + review.positions.length + ' of ' + review.total + ' positions…'
+                    ? review.progress?.phase === 'verify'
+                      ? 'Verifying ' + (review.progress?.verified ?? 0) + ' of ' +
+                        (review.progress?.suspects ?? 0) + ' suspicious moves…'
+                      : 'Analyzed ' + (review.progress?.scanned ?? review.positions.length) +
+                        ' of ' + review.total + ' positions…'
                     : review.error ?? 'Analyzed ' + review.positions.length + ' positions.'}
                 </p>
-                {review.running && <progress className="review-progress-bar" value={review.positions.length} max={review.total} />}
-                {count > MAX_REVIEW_PLIES && <p className="review-description">
-                  The first {MAX_REVIEW_PLIES} half-moves are analyzed to limit device load.
+                {review.running && <progress className="review-progress-bar"
+                  value={review.progress?.scanned ?? review.positions.length} max={review.total} />}
+                {(review.progress?.cached ?? 0) > 0 && <p className="review-description">
+                  Reused {review.progress?.cached} cached evaluations from this browser.
+                </p>}
+                {!review.running && (review.progress?.pending ?? 0) > 0 && (
+                  <p className="review-description" role="note">
+                    {review.progress?.pending} candidate moves still need deeper verification.
+                    Select Continue verification to finish them in another device-friendly pass.
+                    Unverified possible mistakes are not added to Decision Lab.
+                  </p>
+                )}
+                {count > 120 && <p className="review-description">
+                  Analyzing all {count} half-moves. Long games can take several passes to verify.
                 </p>}
                 {review.positions.length > 0 && (
                   <>
@@ -185,7 +218,9 @@ export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onA
               </>
             )}
             <p className="review-license">
-              Evaluations are approximate at depth {REVIEW_DEPTH}. Engine:
+              Initial depth {REVIEW_DEPTH}; potential errors rechecked at depth {REVIEW_CONFIRM_DEPTH}.
+              Only confirmed classifications can become practice cards. Scores remain approximate,
+              and repeated analysis reuses a bounded local cache. Engine:
               {' '}<a href="https://github.com/nmrugg/stockfish.js" target="_blank" rel="noreferrer">Stockfish.js</a> (GPLv3), running on your device.
             </p>
           </section>
