@@ -215,8 +215,10 @@ export async function analyzeGame(
       if (!fullyCached) deepChecks++;
       if (beforeCached) cached++;
       if (afterCached) cached++;
-      refined[index] = beforeCached ?? await obtain(fens[index], CONFIRM_DEPTH);
-      refined[index + 1] = afterCached ?? await obtain(fens[index + 1], CONFIRM_DEPTH);
+      refined[index] = { ...(beforeCached ?? await obtain(fens[index], CONFIRM_DEPTH)),
+        shallow: base[index] };
+      refined[index + 1] = { ...(afterCached ?? await obtain(fens[index + 1], CONFIRM_DEPTH)),
+        shallow: base[index + 1] };
       if (refined[index].depth >= CONFIRM_DEPTH &&
           refined[index + 1].depth >= CONFIRM_DEPTH) verified++;
       onProgress([...refined], fens.length, {
