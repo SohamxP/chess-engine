@@ -62,11 +62,9 @@ describe('local game archive', () => {
     storage.setItem(ARCHIVE_KEY, '{invalid JSON');
     expect(readArchive(storage)).toEqual([]);
     expect(writeArchive([], { setItem() { throw new Error('QuotaExceededError'); } })).toBe(false);
-    expect(archiveGame(game(), {
-      ...storage,
-      getItem: storage.getItem.bind(storage),
-      setItem() { throw new Error('blocked'); },
-    } as Storage).saved).toBe(false);
+    const blocked = new MemoryStorage();
+    blocked.setItem = () => { throw new Error('blocked'); };
+    expect(archiveGame(game(), blocked as Storage).saved).toBe(false);
   });
 
   it('exports legal SAN, player colors, result, and black-to-move custom FEN', () => {
