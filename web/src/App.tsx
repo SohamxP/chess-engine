@@ -525,7 +525,7 @@ export default function App() {
   }, [game?.moveHistory.length, reviewPly]);
 
   useEffect(() => {
-    const count = game?.moveHistory.length ?? 0;
+    const count = (onReview ? (archivedGame ?? game) : game)?.moveHistory.length ?? 0;
     function handleArrow(event: KeyboardEvent) {
       const left = event.key === 'ArrowLeft' || event.code === 'ArrowLeft';
       const right = event.key === 'ArrowRight' || event.code === 'ArrowRight';
@@ -545,7 +545,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handleArrow, { capture: true });
     return () => window.removeEventListener('keydown', handleArrow, { capture: true });
-  }, [game?.id, game?.status, game?.moveHistory.length, busy, onReview]);
+  }, [game?.id, game?.status, game?.moveHistory.length, archivedGame?.id, archivedGame?.moveHistory.length, busy, onReview]);
 
   async function makeMove(move: LegalMove) {
     if (!game || busy || game.aiTurn) return;

@@ -337,11 +337,12 @@ test('opening SAN history navigates to a dedicated review URL, and back preserve
 
   await page.getByRole('button', { name: 'First position' }).click();
   await expect(board(page)).toHaveAttribute('data-review-ply', '0');
+  // Reloaded reviews now use the local snapshot. They return to My Games,
+  // because the original Java session might no longer exist on Render.
   await page.getByRole('button', { name: 'Back to game' }).click();
-  await expect(page).not.toHaveURL(/\?review=/);
-  await expect(board(page)).toHaveAttribute('data-review-ply', 'live');
-  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
-  await expect(page.locator('.move-count')).toHaveText('2 MOVES');
+  await expect(page).toHaveURL(/\?games=1/);
+  await expect(page.getByRole('heading', { name: 'My Games' })).toBeVisible();
+  await expect(page.locator('.archive-game-card')).toHaveCount(1);
 });
 
 test('a later SAN move opens its exact historical position on the review page', async ({ page }) => {
