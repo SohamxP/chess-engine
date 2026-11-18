@@ -196,7 +196,7 @@ centipawn transitions are not converted into imaginary pawn losses. Scores and
 move classifications remain **heuristic**, not authoritative chess assessments.
 
 Completed positions are cached in a bounded, versioned **IndexedDB** store
-(up to 2,400 position/depth entries), with an in-memory fallback when storage is
+(roughly 2,400 position/depth entries), with an in-memory fallback when storage is
 unavailable. Cache keys include the full FEN, engine version, hash configuration,
 and target depth; changes to these settings invalidate stale results. Stopping
 analysis leaves completed positions cached, and reopening the game or clicking
