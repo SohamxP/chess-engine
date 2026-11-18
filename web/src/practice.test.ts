@@ -29,7 +29,7 @@ const evalAt = (cp: number, bestMove: string): PositionEvaluation => ({
   cp, mate: null, bestMove, depth: 10,
 });
 const analysis = [
-  evalAt(0, 'd2d4'), evalAt(-200, 'e7e5'), evalAt(-160, 'g1f3'), evalAt(-500, 'b8c6'),
+  evalAt(0, 'd2d4'), evalAt(-200, 'e7e5'), evalAt(-160, 'b1c3'), evalAt(-500, 'b8c6'),
 ];
 const time = new Date('2026-11-17T18:00:00.000Z');
 
