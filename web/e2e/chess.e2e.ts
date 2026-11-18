@@ -633,3 +633,117 @@ test('Decision Lab evaluates a blind retry, records the plan and survives reload
   await page.getByRole('button', { name: 'Confirm remove' }).click();
   await expect(page.getByRole('heading', { name: 'Your practice deck is empty.' })).toBeVisible();
 });
+
+
+test('imports multiple PGN games with player-side selection, replays history and re-exports real names', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: /My Games/ }).click();
+  await expect(page.getByRole('heading', { name: 'My Games' })).toBeVisible();
+  await page.getByRole('button', { name: 'Import PGN' }).click();
+  await page.getByLabel('Your player name (optional)').fill('Soham');
+  const batch = `[Event "Lichess Blitz"]
+[Site "https://lichess.org/test"]
+[Date "2026.11.17"]
+[White "Soham"]
+[Black "Opponent"]
+[Result "1-0"]
+
+1. e4 e5 2. Nf3 Nc6 1-0
+
+[Event "Chess.com Rapid"]
+[Site "https://www.chess.com/game/live/example"]
+[Date "2026.11.18"]
+[White "Opponent"]
+[Black "Soham"]
+[Result "0-1"]
+
+1. d4 Nf6 2. c4 e6 0-1`;
+  await page.getByLabel('Or paste PGN text').fill(batch);
+  await page.getByRole('button', { name: 'Preview pasted games' }).click();
+  const preview = page.getByRole('region', { name: 'PGN import preview' });
+  await expect(preview.locator('.pgn-preview-card')).toHaveCount(2);
+  await expect(preview.locator('.pgn-preview-card').first().getByRole('combobox')).toHaveValue('white');
+  await expect(preview.locator('.pgn-preview-card').last().getByRole('combobox')).toHaveValue('black');
+  await preview.getByRole('button', { name: 'Import 2 selected games' }).click();
+  await expect(page.getByRole('status')).toContainText('2 imported');
+  await expect(page.locator('.archive-game-card')).toHaveCount(2);
+
+  // Result and original players survive review and round-trip PGN download.
+  const firstCard = page.locator('.archive-game-card').filter({ hasText: 'Lichess' }).first();
+  await expect(firstCard).toContainText('Soham vs. Opponent');
+  const downloadPromise = page.waitForEvent('download');
+  await firstCard.getByRole('button', { name: 'Download PGN' }).click();
+  const download = await downloadPromise;
+  const fs = await import('node:fs/promises');
+  const savedPath = await download.path();
+  if (!savedPath) throw new Error('PGN download path not available');
+  const exported = await fs.readFile(savedPath, 'utf8');
+  expect(exported).toContain('[White "Soham"]');
+  expect(exported).toContain('[Site "https://lichess.org/test"]');
+  expect(exported).toContain('1. e4 e5 2. Nf3 Nc6 1-0');
+
+  await firstCard.getByRole('button', { name: 'Review', exact: true }).click();
+  await expect(page).toHaveURL(/\?review=pgn-/);
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Review notation' })).toContainText('Nf3');
+  await expect(page.locator('.review-result')).toContainText('Soham vs. Opponent');
+  await page.getByRole('button', { name: 'View position after move 3: Nf3' }).click();
+  await expect(board(page)).toHaveAttribute('data-review-ply', '3');
+
+  // The browser snapshot works even when the Java server cannot return the ID.
+  await page.route('**/api/games/*', route => route.fulfill({ status: 404, json: { message: 'No session' } }));
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Review notation' })).toContainText('Nf3');
+  await page.getByRole('button', { name: 'Back to game' }).click();
+  await expect(page.getByRole('heading', { name: 'My Games' })).toBeVisible();
+  expect(await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+test('rejects invalid PGN without losing valid games and never reimports identical moves', async ({ page }) => {
+  await page.getByRole('button', { name: /My Games/ }).click();
+  await page.getByRole('button', { name: 'Import PGN' }).click();
+  const batch = `[Event "Valid"]
+[White "A"]
+[Black "B"]
+[Result "1/2-1/2"]
+
+1. d4 d5 2. c4 e6 1/2-1/2
+
+[Event "Invalid"]
+[White "A"]
+[Black "B"]
+[Result "*"]
+
+1. e4 e5 2. Bh6 *`;
+  await page.getByLabel('Or paste PGN text').fill(batch);
+  await page.getByRole('button', { name: 'Preview pasted games' }).click();
+  await expect(page.getByRole('alert')).toContainText('1 game could not be imported');
+  await expect(page.getByRole('region', { name: 'PGN import preview' }).locator('.pgn-preview-card')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Import 1 selected game' }).click();
+  await expect(page.locator('.archive-game-card')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Preview pasted games' }).click();
+  await page.getByRole('button', { name: 'Import 1 selected game' }).click();
+  await expect(page.getByRole('status')).toContainText('1 already saved');
+  await expect(page.locator('.archive-game-card')).toHaveCount(1);
+});
+
+test('imports uploaded .pgn files without sending PGN content to an API', async ({ page }) => {
+  await page.getByRole('button', { name: /My Games/ }).click();
+  await page.getByRole('button', { name: 'Import PGN' }).click();
+  let uploaded = false;
+  page.on('request', request => {
+    if (request.method() !== 'GET' && request.url().includes('/api/') && request.postData()?.includes('[Event')) {
+      uploaded = true;
+    }
+  });
+  await page.getByLabel('Choose PGN files').setInputFiles({
+    name: 'game.pgn', mimeType: 'text/plain',
+    buffer: Buffer.from('[Event "From file"]\n[White "A"]\n[Black "B"]\n[Result "*"]\n\n1. e4 c5 *'),
+  });
+  await expect(page.getByRole('region', { name: 'PGN import preview' })).toContainText('From file');
+  await page.getByRole('button', { name: 'Import 1 selected game' }).click();
+  await expect(page.locator('.archive-game-card')).toHaveCount(1);
+  expect(uploaded).toBe(false);
+});
