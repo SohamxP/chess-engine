@@ -15,6 +15,7 @@ interface Attempt {
   bestSan: string | null;
   success: boolean | null;
   saved: boolean;
+  previousPlan: string;
 }
 
 const pieceName: Record<string, string> = {
@@ -50,7 +51,7 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
   const chess = useMemo(() => card ? new Chess(card.fen) : null, [card?.fen]);
   const legalMoves = useMemo(() => chess?.moves({ verbose: true }) ?? [], [chess]);
   const options = legalMoves.filter(move => move.from === selected);
-  const targets = new Set(options.map(move => move.to));
+  const targets = new Set<string>(options.map(move => move.to));
   const pieces = useMemo(() => card ? parseFen(attemptFen ?? card.fen) : {}, [card?.fen, attemptFen]);
   const squares = squareOrder(card?.white ?? true);
 
@@ -114,7 +115,7 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
         grade: played.grade, lossCp: played.lossCp,
         originalLossCp: old.lossCp,
         bestSan: before.bestMove ? uciToSan(card.fen, before.bestMove) : null,
-        success, saved,
+        success, saved, previousPlan: card.lastPlan,
       });
     } catch (caught) {
       if (!abort.signal.aborted) {
@@ -256,6 +257,12 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
                   <div><span>Your original move ({card.originalSan})</span><strong>{attempt.originalLossCp === null ? '—' : (attempt.originalLossCp / 100).toFixed(2) + ' pawns lost'}</strong></div>
                   <div><span>Engine suggestion</span><strong>{attempt.bestSan ?? 'Unavailable'}</strong></div>
                 </div>
+                <div className="lab-reflection">
+                  <strong>Compare your reasoning</strong>
+                  <p>This attempt: {plan.trim() || 'No written plan.'}</p>
+                  {attempt.previousPlan && <p>Last time: {attempt.previousPlan}</p>}
+                </div>
+                {attempt.uci === card.originalUci && <p>You repeated the move you originally played. Try identifying a different idea when this position returns.</p>}
                 {attempt.success === null
                   ? <p>Analysis could not score this reliably, so the practice schedule was not changed.</p>
                   : <p>{attempt.success
