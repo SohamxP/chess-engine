@@ -107,7 +107,7 @@ describe('PGN import parser', () => {
     expect(preview.errors.map(error => error.number)).toEqual([2, 3]);
     expect(preview.errors[1].message).toMatch(/standard chess/i);
     expect(parsePgnBatch('  ').games).toEqual([]);
-    expect(parsePgnBatch('1. e4 e5 2.').games).toHaveLength(1);
+    expect(parsePgnBatch('1. e4 e5 *').games).toHaveLength(1);
     expect(parsePgnBatch('1. e4 e5 2. Bh6').games).toEqual([]);
     expect(parsePgnBatch('x'.repeat(1_000_001)).errors).toHaveLength(1);
   });
@@ -138,7 +138,11 @@ describe('PGN import parser', () => {
     const result = addPgnSelections(stored, [{ parsed, humanWhite: true }]);
     expect(result.imported).toBe(0);
     expect(result.full).toBe(1);
-    expect(result.games).toEqual(stored);
+    expect(result.games).toHaveLength(50);
+    expect(new Set(result.games.map(item => item.id)))
+      .toEqual(new Set(stored.map(item => item.id)));
+    expect(result.games.map(item => item.savedAt))
+      .toEqual([...stored].map(item => item.savedAt).sort().reverse());
   });
 
   it('persists original PGN metadata through local-storage reloads', () => {
