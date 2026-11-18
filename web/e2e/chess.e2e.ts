@@ -625,4 +625,11 @@ test('Decision Lab evaluates a blind retry, records the plan and survives reload
   const overflow = await page.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Your decision library' }))
+    .toContainText('1 attempts');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm remove' }).click();
+  await expect(page.getByRole('heading', { name: 'Your practice deck is empty.' })).toBeVisible();
 });
