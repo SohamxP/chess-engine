@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerE
 import { api } from './api';
 import { archiveGame, downloadPgn, readArchive, removeArchivedGame, type ArchivedGame } from './archive';
 import { SavedGamesPage } from './SavedGamesPage';
+import { DecisionLabPage } from './DecisionLabPage';
+import {
+  duePracticeCards, makePracticeCards, readPracticeCards, recordPracticeAttempt,
+  removePracticeCard, writePracticeCards, type PracticeCard,
+} from './practice';
 import { analyzeGame, MAX_REVIEW_PLIES } from './analysis';
 import { GameReviewPage, type ReviewState } from './GameReviewPage';
 import { PlayerStrip } from './PlayerStrip';
@@ -257,6 +262,10 @@ export default function App() {
     () => new URLSearchParams(window.location.search).has('review'));
   const [onGames, setOnGames] = useState(
     () => new URLSearchParams(window.location.search).has('games'));
+  const [onLab, setOnLab] = useState(
+    () => new URLSearchParams(window.location.search).has('lab'));
+  const [practiceCards, setPracticeCards] = useState<PracticeCard[]>(() => readPracticeCards());
+  const [practiceError, setPracticeError] = useState<string | null>(null);
   const [archivedGame, setArchivedGame] = useState<GameState | null>(null);
   const [reviewReturn, setReviewReturn] = useState<'game' | 'games'>('game');
   const [savedGames, setSavedGames] = useState<ArchivedGame[]>(() => readArchive());
@@ -270,6 +279,7 @@ export default function App() {
     setArchivedGame(null);
     setReviewReturn('game');
     setOnGames(false);
+    setOnLab(false);
     setReviewPly(Math.max(0, Math.min(game.moveHistory.length, ply)));
     setDismissedResult(game.id + ':' + game.status + ':' + game.moveHistory.length);
     if (!onReview) {
@@ -287,8 +297,62 @@ export default function App() {
     setInitialReviewError(null);
     window.history.pushState({}, '', '?review=' + encodeURIComponent(item.id));
     setOnGames(false);
+    setOnLab(false);
     setOnReview(true);
     window.scrollTo(0, 0);
+  }
+
+  function openLab() {
+    if (reviewController.current) stopReview();
+    setReviewPly(null);
+    setArchivedGame(null);
+    window.history.pushState({}, '', '?lab=1');
+    setOnGames(false);
+    setOnReview(false);
+    setOnLab(true);
+    window.scrollTo(0, 0);
+  }
+
+  function returnFromLab() {
+    window.history.replaceState({}, '', window.location.pathname);
+    setOnLab(false);
+    if (!game) void newGame(true, 2);
+    window.scrollTo(0, 0);
+  }
+
+  function recordLabAttempt(id: string, success: boolean, plan: string): boolean {
+    const next = recordPracticeAttempt(practiceCards, id, success, plan);
+    const ok = writePracticeCards(next);
+    if (ok) {
+      setPracticeCards(next);
+      setPracticeError(null);
+    } else {
+      setPracticeError('Practice progress could not be saved. Check browser storage settings.');
+    }
+    return ok;
+  }
+
+  function deletePractice(id: string) {
+    const next = removePracticeCard(practiceCards, id);
+    if (writePracticeCards(next)) {
+      setPracticeCards(next);
+      setPracticeError(null);
+    } else {
+      setPracticeError('This decision could not be removed from browser storage.');
+    }
+  }
+
+  function buildDecisionDeck() {
+    const target = archivedGame ?? game;
+    if (!target || !review?.positions.length) return;
+    const { cards } = makePracticeCards(target, review.positions, practiceCards);
+    if (!writePracticeCards(cards)) {
+      setPracticeError('Decision Lab could not save your positions. Browser storage may be blocked or full.');
+    } else {
+      setPracticeCards(cards);
+      setPracticeError(null);
+    }
+    openLab();
   }
 
   function openGames() {
@@ -297,6 +361,7 @@ export default function App() {
     setArchivedGame(null);
     window.history.pushState({}, '', '?games=1');
     setOnReview(false);
+    setOnLab(false);
     setOnGames(true);
     window.scrollTo(0, 0);
   }
@@ -306,6 +371,7 @@ export default function App() {
     const backToGames = reviewReturn === 'games' || !game;
     window.history.replaceState({}, '', backToGames ? '?games=1' : window.location.pathname);
     setOnReview(false);
+    setOnLab(false);
     setOnGames(backToGames);
     setArchivedGame(null);
     setReviewPly(null);
@@ -443,7 +509,7 @@ export default function App() {
     if (mounted.current) return;
     mounted.current = true;
     const params = new URLSearchParams(window.location.search);
-    if (params.has('games')) return;
+    if (params.has('games') || params.has('lab')) return;
     const gameId = params.get('review');
     if (!gameId) {
       void newGame(true, 2);
@@ -477,6 +543,15 @@ export default function App() {
         setReview(current => current?.running
           ? { ...current, running: false, error: 'Analysis stopped.' } : current);
       }
+      if (params.has('lab')) {
+        setOnLab(true);
+        setOnGames(false);
+        setOnReview(false);
+        setArchivedGame(null);
+        setReviewPly(null);
+        return;
+      }
+      setOnLab(false);
       if (params.has('games')) {
         setOnGames(true);
         setOnReview(false);
@@ -530,7 +605,7 @@ export default function App() {
       const left = event.key === 'ArrowLeft' || event.code === 'ArrowLeft';
       const right = event.key === 'ArrowRight' || event.code === 'ArrowRight';
       if ((!left && !right) || event.altKey || event.ctrlKey || event.metaKey
-          || count === 0 || busy
+          || onLab || onGames || count === 0 || busy
           || document.querySelector('[aria-label="Choose promotion piece"]')
           || document.querySelector('[aria-label="Confirm resignation"]')) return;
       const element = event.target instanceof HTMLElement ? event.target : null;
@@ -545,7 +620,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handleArrow, { capture: true });
     return () => window.removeEventListener('keydown', handleArrow, { capture: true });
-  }, [game?.id, game?.status, game?.moveHistory.length, archivedGame?.id, archivedGame?.moveHistory.length, busy, onReview]);
+  }, [game?.id, game?.status, game?.moveHistory.length, archivedGame?.id, archivedGame?.moveHistory.length, busy, onReview, onLab, onGames]);
 
   async function makeMove(move: LegalMove) {
     if (!game || busy || game.aiTurn) return;
@@ -649,25 +724,32 @@ export default function App() {
     : 'Connecting to engine';
   const score = game ? resultScore(game) : null;
   const resultKey = game ? game.id + ':' + game.status + ':' + game.moveHistory.length : null;
-  const showResult = Boolean(score && !onReview && !onGames && resultKey !== dismissedResult && !busy && !motion && reviewPly === null);
+  const showResult = Boolean(score && !onReview && !onGames && !onLab && resultKey !== dismissedResult && !busy && !motion && reviewPly === null);
   const humanSide = game?.humanWhite ? 'White' : 'Black';
+  const dueCount = duePracticeCards(practiceCards).length;
 
   return (
     <div className="app-shell">
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand"><span className="logo-symbol" aria-hidden="true">♞</span>
-            <span>OpenFile <strong>Chess</strong></span></div>
-          <span className="topbar-caption">Play against the computer</span>
+            <span><strong>PlyForge</strong></span></div>
+          <span className="topbar-caption">Play. Reflect. Improve.</span>
           <button type="button" className="topbar-games" onClick={openGames}>
             My Games {savedGames.length > 0 ? '(' + savedGames.length + ')' : ''}
+          </button>
+          <button type="button" className="topbar-games" onClick={openLab}>
+            Decision Lab {dueCount > 0 ? '(' + dueCount + ' due)' : ''}
           </button>
           <a className="source-link" href="https://github.com/SohamxP/chess-engine"
             target="_blank" rel="noreferrer">View source <span aria-hidden="true">↗</span></a>
         </div>
       </header>
 
-      {onGames ? (
+      {onLab ? (
+        <DecisionLabPage cards={practiceCards} onRecord={recordLabAttempt}
+          onDelete={deletePractice} onBack={returnFromLab} error={practiceError} />
+      ) : onGames ? (
         <SavedGamesPage games={savedGames} onReview={openSavedReview}
           onDelete={deleteSavedGame} onBack={returnFromGames} error={archiveError} />
       ) : onReview ? (
@@ -678,6 +760,7 @@ export default function App() {
           onDownload={() => downloadPgn(activeReviewGame, savedGames.find(item =>
             item.id === activeReviewGame.id)?.savedAt)}
           onAnalyze={() => void startReview()} onStop={stopReview}
+          onBuildPractice={buildDecisionDeck}
           board={<ChessBoard game={activeReviewGame} busy={true} motion={null}
             reviewPly={reviewPly ?? activeReviewGame.moveHistory.length} onMove={() => undefined} />} />
           : <main className="main-content">
@@ -849,7 +932,7 @@ export default function App() {
       )}
 
       <footer className="site-footer">
-        <span>OpenFile Chess</span><span>Built with Java and React</span>
+        <span>PlyForge</span><span>Built with Java and React</span>
       </footer>
 
       {confirmResign && (
