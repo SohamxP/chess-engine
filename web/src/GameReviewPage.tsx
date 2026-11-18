@@ -12,7 +12,7 @@ export interface ReviewState {
   error: string | null;
 }
 
-export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onAnalyze, onStop, onDownload, isArchived = false }: {
+export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onAnalyze, onStop, onDownload, onBuildPractice, isArchived = false }: {
   game: GameState;
   board: ReactNode;
   ply: number;
@@ -22,6 +22,7 @@ export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onA
   onAnalyze: () => void;
   onStop: () => void;
   onDownload: () => void;
+  onBuildPractice: () => void;
   isArchived?: boolean;
 }) {
   const count = game.moveHistory.length;
@@ -197,6 +198,17 @@ export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onA
               )) : <p className="no-moves">Moves will appear here after a game.</p>}
             </div>
           </section>
+
+          {review && !review.running && misses.length > 0 && (
+            <section className="panel review-practice" aria-label="Decision Lab">
+              <div className="panel-heading"><h2>Turn mistakes into practice</h2></div>
+              <p className="review-description">Revisit your own decisions without seeing the best move first. Compare alternatives and return later using a spaced review schedule.</p>
+              <button type="button" className="btn-primary" onClick={onBuildPractice}>
+                Add {misses.length} decision{misses.length === 1 ? '' : 's'} to Decision Lab
+              </button>
+              <p className="review-license">Existing training cards keep their progress; repeated imports are ignored.</p>
+            </section>
+          )}
 
           {review && reviewed.length > 0 && (
             <section className="panel review-mistakes" aria-label="Moves to revisit">
