@@ -234,7 +234,8 @@ export async function analyzeGame(
     });
     return refined;
   } finally {
-    worker?.terminate();
+    // Worker is assigned in the async obtain() closure, invisible to TS narrowing.
+    (worker as Worker | null)?.terminate();
   }
 }
 
