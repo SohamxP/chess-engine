@@ -286,9 +286,10 @@ PlyForge does not require you to play chess here to improve. In **My Games → I
 
 The importer uses the existing **chess.js 1.4** library to validate each move and rebuild
 the move/FEN history; the Java backend still handles live PlyForge games. Imported outcomes
-are represented without assuming a player resigned. Duplicate imported games are detected
-by their starting position and full UCI mainline. Existing saved games are never deleted to
-make space during import.
+are represented without assuming a player resigned. Re-importing the same source match is
+deduplicated using its starting position, full UCI mainline and available source identity
+(game URL, otherwise player/date/event tags). Distinct matches with the same moves can coexist.
+Existing saved games are never deleted to make space during import.
 
 **Limits:** Standard-chess PGNs only (not Chess960), up to 50 games per preview, 500
 half-moves per game, 1,000,000 characters per file/text input, and 50 total browser-saved
