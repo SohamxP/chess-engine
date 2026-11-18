@@ -1,9 +1,26 @@
-# PlyForge — Java Chess Engine + Decision Lab
+# PlyForge — The Chess Decision Lab
 
-A full-stack human-versus-engine chess game. The **Java 25 chess engine** owns
-all move legality, game termination, position evaluation, and AI search. A
-**React 19 / TypeScript / Vite** frontend displays the board, valid destinations,
-move history and match settings. Spring Boot exposes the engine over a REST API.
+**Play a game. Revisit the decisions that cost you. Practice a better idea before the engine reveals its answer. Remember it next week.**
+
+PlyForge is a full-stack chess game plus a private, spaced-recall training system built from *your own games*. Its focus is the thinking process: you can write down your plan, try a different legal move, compare that decision to your original move with local Stockfish analysis, and return when the position is due. No account, LLM API, or paid analysis service required.
+
+**[Try the live app](https://openfile-chess.onrender.com/)** · [Read the Decision Lab guide](#decision-lab--learn-from-your-own-decisions)
+
+### How it works
+
+```text
+Java chess engine (Java 25 + Spring Boot)
+      -> React 19 game board + FIDE move history
+      -> browser-local saved games
+      -> Stockfish 19 Lite Web Worker analyzes historical positions
+      -> human mistakes become Decision Lab cards
+      -> blind legal move + written plan
+      -> compare new move vs. original vs. engine suggestion
+      -> spaced review: 1 / 3 / 7 / 14 / 30 days
+```
+
+**Engineering:** custom Java engine with legal moves, negamax/alpha-beta, iterative deepening, quiescence and transposition caching; React/TypeScript UI; Spring Boot REST; chess.js for legal offline practice and SAN formatting; Stockfish WASM in a disposable browser worker; localStorage archives; Java, Vitest and real-browser Playwright tests; Dockerized deployment to Render.
+
 
 ## Requirements
 
