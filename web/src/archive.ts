@@ -3,10 +3,21 @@ import { resultScore, startingFen, type GameState } from './chess';
 export const ARCHIVE_KEY = 'openfile-chess-games-v1';
 export const MAX_ARCHIVED_GAMES = 50;
 
+export interface PgnSource {
+  kind: 'pgn';
+  white: string;
+  black: string;
+  event: string;
+  site: string;
+  date: string;
+  round: string;
+}
+
 export interface ArchivedGame {
   id: string;
   savedAt: string;
   game: GameState;
+  source?: PgnSource;
 }
 
 /**
@@ -23,6 +34,14 @@ export function upsertArchivedGame(
     .slice(0, MAX_ARCHIVED_GAMES);
 }
 
+function validSource(value: unknown): value is PgnSource {
+  if (!value || typeof value !== 'object') return false;
+  const source = value as Partial<PgnSource>;
+  return source.kind === 'pgn' &&
+    ['white', 'black', 'event', 'site', 'date', 'round']
+      .every(key => typeof source[key as keyof PgnSource] === 'string');
+}
+
 function validArchive(value: unknown): value is ArchivedGame {
   if (!value || typeof value !== 'object') return false;
   const item = value as Partial<ArchivedGame>;
@@ -30,7 +49,9 @@ function validArchive(value: unknown): value is ArchivedGame {
   return typeof item.id === 'string' && item.id.length > 0 &&
     typeof item.savedAt === 'string' &&
     !!game && typeof game === 'object' &&
-    game.id === item.id && typeof game.fen === 'string' &&
+    game.id === item.id &&
+    (item.source === undefined || validSource(item.source)) &&
+    typeof game.fen === 'string' &&
     typeof game.initialFen === 'string' &&
     typeof game.status === 'string' &&
     typeof game.humanWhite === 'boolean' &&
@@ -86,18 +107,23 @@ export function removeArchivedGame(id: string, storage?: Storage): {
   return { games, saved: writeArchive(games, store) };
 }
 
-export function pgnForGame(game: GameState, date: string): string {
+/** Never interpolate unescaped PGN header values from imported files. */
+function tagValue(value: string): string {
+  return value.slice(0, 150).replace(/[\r\n]/g, ' ').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+export function pgnForGame(game: GameState, date: string, source?: PgnSource): string {
   const result = resultScore(game) ?? '*';
   const dt = Number.isFinite(Date.parse(date)) ? new Date(date).toISOString().slice(0, 10).replaceAll('-', '.') : '????.??.??';
-  const white = game.humanWhite ? 'You' : 'Computer';
-  const black = game.humanWhite ? 'Computer' : 'You';
+  const white = source?.white ?? (game.humanWhite ? 'You' : 'Computer');
+  const black = source?.black ?? (game.humanWhite ? 'Computer' : 'You');
   const headers = [
-    '[Event "OpenFile Chess"]',
-    '[Site "https://openfile-chess.onrender.com"]',
-    '[Date "' + dt + '"]',
-    '[Round "-"]',
-    '[White "' + white + '"]',
-    '[Black "' + black + '"]',
+    '[Event "' + tagValue(source?.event ?? 'PlyForge') + '"]',
+    '[Site "' + tagValue(source?.site ?? 'https://openfile-chess.onrender.com') + '"]',
+    '[Date "' + tagValue(source?.date ?? dt) + '"]',
+    '[Round "' + tagValue(source?.round ?? '-') + '"]',
+    '[White "' + tagValue(white) + '"]',
+    '[Black "' + tagValue(black) + '"]',
     '[Result "' + result + '"]',
   ];
   if (game.initialFen && game.initialFen !== startingFen) {
@@ -119,8 +145,8 @@ export function pgnForGame(game: GameState, date: string): string {
   return headers.join('\n') + '\n\n' + tokens.join(' ') + '\n';
 }
 
-export function downloadPgn(game: GameState, savedAt = new Date().toISOString()): void {
-  const content = pgnForGame(game, savedAt);
+export function downloadPgn(game: GameState, savedAt = new Date().toISOString(), source?: PgnSource): void {
+  const content = pgnForGame(game, savedAt, source);
   const blob = new Blob([content], { type: 'application/x-chess-pgn;charset=utf-8' });
   const href = URL.createObjectURL(blob);
   const link = document.createElement('a');

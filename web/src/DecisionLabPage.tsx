@@ -23,6 +23,12 @@ const pieceName: Record<string, string> = {
   p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king',
 };
 
+function decisionLabel(card: PracticeCard): string {
+  const moveNumber = Number(card.fen.split(' ')[5]);
+  return (Number.isInteger(moveNumber) && moveNumber > 0 ? moveNumber : Math.ceil(card.ply / 2)) +
+    (card.white ? '.' : '…');
+}
+
 function dueLabel(iso: string): string {
   const next = new Date(iso);
   return Number.isNaN(next.getTime()) ? 'Unknown' :
@@ -201,7 +207,7 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
         <div className="lab-layout">
           <section className="lab-board-column" aria-label="Practice position">
             <div className="lab-situation">
-              <span className="lab-eyebrow">Decision · Move {Math.ceil(card.ply / 2)}</span>
+              <span className="lab-eyebrow">Decision · Move {decisionLabel(card)}</span>
               <strong>{card.white ? 'White' : 'Black'} to move</strong>
               <span>What would you play differently?</span>
             </div>
@@ -317,7 +323,7 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
             {cards.slice().sort((a, b) => a.dueAt.localeCompare(b.dueAt)).map(item => (
               <div className="lab-library-row" key={item.id}>
                 <div>
-                  <strong>Move {Math.ceil(item.ply / 2)} · {item.white ? 'White' : 'Black'}</strong>
+                  <strong>Move {decisionLabel(item)} · {item.white ? 'White' : 'Black'}</strong>
                   <span>{Date.parse(item.dueAt) <= Date.now() ? 'Due now' : 'Due ' + dueLabel(item.dueAt)} · {item.attempts} attempts · {item.streak} recalls</span>
                 </div>
                 <div className="lab-library-actions">

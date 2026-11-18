@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { downloadPgn, type ArchivedGame } from './archive';
 import { resultScore, statusLabel } from './chess';
+import { PgnImportPanel, type PgnImportCommit } from './PgnImportPanel';
+import type { PgnSelection } from './pgnImport';
 
 function ArchivedGameCard({ item, onReview, onDelete }: {
   item: ArchivedGame;
@@ -18,17 +20,21 @@ function ArchivedGameCard({ item, onReview, onDelete }: {
       <div className="archive-card-heading">
         <div>
           <span className="archive-date">{when}</span>
-          <h2>You vs. Computer</h2>
+          <h2>{item.source
+            ? item.source.white + ' vs. ' + item.source.black
+            : 'You vs. Computer'}</h2>
         </div>
         <span className={'archive-status ' + (score ? 'archive-finished' : '')}>
           {score ?? 'Unfinished'}
         </span>
       </div>
-      <p className="archive-result">{statusLabel(game)} · Playing {game.humanWhite ? 'White' : 'Black'}</p>
-      <p className="archive-moves">{game.moveHistory.length} half-moves · Level {game.depth}</p>
+      <p className="archive-result">{statusLabel(game)} · {item.source ? 'Reviewing' : 'Playing'} {game.humanWhite ? 'White' : 'Black'}</p>
+      <p className="archive-moves">{game.moveHistory.length} half-moves · {item.source
+        ? 'PGN import · ' + item.source.event + ' · ' + item.source.date
+        : 'Level ' + game.depth}</p>
       <div className="archive-card-actions">
         <button className="btn-primary" type="button" onClick={() => onReview(item)}>Review</button>
-        <button className="btn-secondary" type="button" onClick={() => downloadPgn(game, item.savedAt)}>
+        <button className="btn-secondary" type="button" onClick={() => downloadPgn(game, item.savedAt, item.source)}>
           Download PGN
         </button>
         {confirmDelete ? (
@@ -45,11 +51,12 @@ function ArchivedGameCard({ item, onReview, onDelete }: {
   );
 }
 
-export function SavedGamesPage({ games, onReview, onDelete, onBack, error }: {
+export function SavedGamesPage({ games, onReview, onDelete, onBack, onImport, error }: {
   games: ArchivedGame[];
   onReview: (item: ArchivedGame) => void;
   onDelete: (id: string) => void;
   onBack: () => void;
+  onImport: (choices: PgnSelection[]) => PgnImportCommit;
   error: string | null;
 }) {
   return (
@@ -58,7 +65,7 @@ export function SavedGamesPage({ games, onReview, onDelete, onBack, error }: {
         <div>
           <button type="button" className="review-back" onClick={onBack}>← Back to game</button>
           <h1>My Games</h1>
-          <p>Revisit your matches, review moves, and export a portable PGN file.</p>
+          <p>Review your games from PlyForge or import games played elsewhere.</p>
         </div>
         <span className="archive-total">{games.length} saved</span>
       </header>
@@ -69,6 +76,7 @@ export function SavedGamesPage({ games, onReview, onDelete, onBack, error }: {
           Clearing browser data or using private browsing may erase them. Download PGN for a backup.</p>
       </div>
       {error && <div role="alert" className="error-message">{error}</div>}
+      <PgnImportPanel onImport={onImport} />
       {games.length ? (
         <div className="archive-grid">
           {games.map(item => (
@@ -78,7 +86,7 @@ export function SavedGamesPage({ games, onReview, onDelete, onBack, error }: {
       ) : (
         <section className="panel archive-empty">
           <h2>No saved games yet</h2>
-          <p>Play at least one move to automatically save the match history on this device.</p>
+          <p>Play a match or import a PGN from another chess website to start building your own decision library.</p>
           <button className="btn-primary" type="button" onClick={onBack}>Play chess</button>
         </section>
       )}

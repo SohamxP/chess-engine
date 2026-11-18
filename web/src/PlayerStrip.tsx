@@ -1,15 +1,17 @@
 import { capturedGlyph, capturedMaterial } from './captures';
 import type { GameState } from './chess';
 
-export function PlayerStrip({ game, player, ply, thinking = false }: {
+export function PlayerStrip({ game, player, ply, thinking = false, label }: {
   game: GameState;
   player: 'human' | 'computer';
   ply: number;
   thinking?: boolean;
+  label?: string;
 }) {
   const human = player === 'human';
   const white = human ? game.humanWhite : !game.humanWhite;
   const side = white ? 'White' : 'Black';
+  const displayName = label ?? (human ? 'You' : 'Computer');
   const material = capturedMaterial(game, ply);
   const taken = white ? material.byWhite : material.byBlack;
   const lead = white ? material.advantage : -material.advantage;
@@ -20,11 +22,12 @@ export function PlayerStrip({ game, player, ply, thinking = false }: {
         {human ? '♙' : '♞'}
       </div>
       <div className="player-details">
-        <strong>{human ? 'You' : 'Computer'}</strong>
-        <span>{human ? 'Playing ' + side : side + ' · Java chess engine'}</span>
+        <strong>{displayName}</strong>
+        <span>{label ? side + ' · PGN import'
+          : human ? 'Playing ' + side : side + ' · Java chess engine'}</span>
         {taken.length > 0 && (
           <div className="captured-pieces" aria-label={
-            (human ? 'You' : 'Computer') + ' captured ' + taken.length + ' pieces'
+            displayName + ' captured ' + taken.length + ' pieces'
           }>
             {taken.map((piece, index) => (
               <span key={index} aria-hidden="true"

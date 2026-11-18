@@ -267,3 +267,33 @@ training cards are retained. No paid LLM requests, tracking, account, backend da
 cross-device synchronization are required. Clearing browser storage erases the training deck.
 The system deliberately does not show the engine's answer before a user commits a move.
 
+
+## Import games from other chess platforms (PGN)
+
+PlyForge does not require you to play chess here to improve. In **My Games → Import PGN**:
+
+1. Export a standard `.pgn` from Chess.com, Lichess or another chess site.
+2. Select one or more local PGN files, or paste the PGN text. Preview every parsed game;
+   invalid games are reported individually without blocking valid games.
+3. Choose which side **you** played in each game (an optional player-name match suggests
+   White or Black). The choice controls the review orientation and which mistakes become
+   Decision Lab practice cards.
+4. Import the games into the same browser-local archive. Open **Review**, run the local
+   Stockfish analysis and then add your own mistakes to Decision Lab. Games do not need
+   a Java server session.
+5. Export the imported game back to PGN with its original player names, event, date, site,
+   result, mainline SAN, and any custom starting FEN.
+
+The importer uses the existing **chess.js 1.4** library to validate each move and rebuild
+the move/FEN history; the Java backend still handles live PlyForge games. Imported outcomes
+are represented without assuming a player resigned. Re-importing the same source match is
+deduplicated using its starting position, full UCI mainline and available source identity
+(game URL, otherwise player/date/event tags). Distinct matches with the same moves can coexist.
+Existing saved games are never deleted to make space during import.
+
+**Limits:** Standard-chess PGNs only (not Chess960), up to 50 games per preview, 500
+half-moves per game, 1,000,000 characters per file/text input, and 50 total browser-saved
+games. Import keeps the mainline, not variations, comments or NAG annotations. These limits
+protect low-memory devices and browser storage. Clear space or import a smaller batch if
+necessary. PGN data stays in your browser; it is not uploaded to Render or an external API.
+Imported games are read-only snapshots, and browser data can still be lost if cleared.
