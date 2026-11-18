@@ -772,3 +772,37 @@ test('custom FEN PGN keeps original fullmove numbering and Black-side orientatio
   await expect(page.locator('.human-strip')).toContainText('Black');
   await expect(page.getByRole('note')).toContainText('Imported PGN');
 });
+
+
+test('Game Review caches completed Stockfish positions across page reloads', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: /My Games/ }).click();
+  await page.getByRole('button', { name: 'Import PGN' }).click();
+  await page.getByLabel('Or paste PGN text').fill(`[Event "Cache check"]
+[White "Me"]
+[Black "Opponent"]
+[Result "*"]
+
+1. e4 e5 *`);
+  await page.getByRole('button', { name: 'Preview pasted games' }).click();
+  await page.getByRole('button', { name: 'Import 1 selected game' }).click();
+  await page.locator('.archive-game-card').filter({ hasText: 'Cache check' })
+    .getByRole('button', { name: 'Review' }).click();
+  const evaluation = page.getByRole('region', { name: 'Engine evaluation' });
+  await evaluation.getByRole('button', { name: 'Analyze game' }).click();
+  await expect(evaluation.getByRole('status')).toHaveText('Analyzed 3 positions.', {
+    timeout: 120_000,
+  });
+  // IndexedDB persists, while the in-memory module cache does not.
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
+  await page.getByRole('region', { name: 'Engine evaluation' })
+    .getByRole('button', { name: 'Analyze game' }).click();
+  await expect(page.getByRole('region', { name: 'Engine evaluation' }).getByRole('status'))
+    .toHaveText('Analyzed 3 positions.', { timeout: 50_000 });
+  await expect(page.getByRole('region', { name: 'Engine evaluation' }))
+    .toContainText('Reused 3 cached evaluations');
+  expect(await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});

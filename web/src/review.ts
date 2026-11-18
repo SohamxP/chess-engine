@@ -9,6 +9,8 @@ export interface PositionEvaluation {
   /** UCI move favored by Stockfish from this exact position. */
   bestMove: string | null;
   depth: number;
+  /** Quick-depth score retained alongside a deeper score for adjacent moves. */
+  shallow?: PositionEvaluation;
 }
 
 export type MoveGrade = 'Best' | 'Good' | 'Inaccuracy' | 'Mistake' | 'Blunder' | 'Unrated';
@@ -19,11 +21,14 @@ export interface ReviewedMove {
   lossCp: number | null;
   betterMove: string | null;
   evaluation: PositionEvaluation;
+  /** A possible costly move with insufficient deep-search confirmation. */
+  pendingVerification: boolean;
 }
 
 /** UCI information is reported from the perspective of the side to move. */
 export function parseUciScore(line: string, whiteToMove: boolean): PositionEvaluation | null {
-  if (!line.startsWith('info ') || /\b(lowerbound|upperbound)\b/.test(line)) return null;
+  if (!line.startsWith('info ') || /\b(lowerbound|upperbound)\b/.test(line) ||
+      /\bmultipv ([2-9]|[1-9]\d+)/.test(line)) return null;
   const depth = Number(/\bdepth (\d+)/.exec(line)?.[1] ?? 0);
   const score = /\bscore (cp|mate) (-?\d+)/.exec(line);
   if (!score) return null;
@@ -58,31 +63,85 @@ export function formatEvaluation(evaluation: PositionEvaluation | undefined): st
  * A shallow analysis is approximate. Avoid calling slight score shifts mistakes.
  * Scores are from White's perspective, so Black's changes must be inverted.
  */
+export const CONFIRM_DEPTH = 16;
+export const REVIEW_BASE_DEPTH = 10;
+
+/**
+ * Quick scores identify candidates for confirmation, not final blunders.
+ * A 45cp threshold gives a margin around the 60cp inaccuracy boundary.
+ */
+export function needsDeepVerification(
+  before: PositionEvaluation, after: PositionEvaluation,
+  move: Pick<MoveEntry, 'white' | 'uci'>,
+): boolean {
+  if ((before.cp === null && before.mate === null) ||
+      (after.cp === null && after.mate === null)) return true;
+  if (before.mate !== null || after.mate !== null) {
+    return before.mate === null || after.mate === null ||
+      Math.sign(before.mate) !== Math.sign(after.mate);
+  }
+  return Math.max(0, ((before.cp ?? 0) - (after.cp ?? 0)) * (move.white ? 1 : -1)) >= 45;
+}
+
+/**
+ * Conservative grading: mate-vs-centipawn transitions are NOT a numeric
+ * pawn swing. A change in forced-mate winner can be identified without
+ * inventing a "90-pawn loss". Search depth still matters.
+ */
 export function gradeMove(before: PositionEvaluation, after: PositionEvaluation,
                           move: Pick<MoveEntry, 'white' | 'uci'>): {
   grade: MoveGrade; lossCp: number | null; betterMove: string | null;
 } {
-  const previous = numericEvaluation(before);
-  const following = numericEvaluation(after);
-  if (previous === null || following === null) {
+  const bestMatch = !!before.bestMove &&
+    before.bestMove.toLowerCase() === move.uci.toLowerCase();
+  const better = !bestMatch ? before.bestMove : null;
+  if (before.depth < REVIEW_BASE_DEPTH || after.depth < REVIEW_BASE_DEPTH ||
+      (before.cp === null && before.mate === null) ||
+      (after.cp === null && after.mate === null)) {
     return { grade: 'Unrated', lossCp: null, betterMove: null };
   }
-  const lossCp = Math.max(0, Math.round((previous - following) * (move.white ? 1 : -1)));
-  const betterMove = before.bestMove && before.bestMove.toLowerCase() !== move.uci.toLowerCase()
-    ? before.bestMove : null;
-  const grade: MoveGrade = betterMove === null && before.bestMove ? 'Best'
+  if (before.mate !== null || after.mate !== null) {
+    if (before.mate === null || after.mate === null) {
+      return { grade: 'Unrated', lossCp: null, betterMove: null };
+    }
+    const beforeWinner = Math.sign(before.mate);
+    const afterWinner = Math.sign(after.mate);
+    if (beforeWinner === afterWinner) {
+      return { grade: bestMatch ? 'Best' : 'Good', lossCp: 0, betterMove: null };
+    }
+    // A player gave away a forced win / allowed a forced loss.
+    return {
+      grade: beforeWinner === (move.white ? 1 : -1) ? 'Blunder' : 'Good',
+      lossCp: null,
+      betterMove: beforeWinner === (move.white ? 1 : -1) ? better : null,
+    };
+  }
+  const lossCp = Math.max(0, Math.round(((before.cp ?? 0) - (after.cp ?? 0)) *
+    (move.white ? 1 : -1)));
+  const grade: MoveGrade = bestMatch && lossCp <= 40 ? 'Best'
     : lossCp >= 300 ? 'Blunder'
     : lossCp >= 140 ? 'Mistake'
     : lossCp >= 60 ? 'Inaccuracy'
     : 'Good';
-  return { grade, lossCp, betterMove: lossCp >= 60 ? betterMove : null };
+  return { grade, lossCp, betterMove: lossCp >= 60 ? better : null };
 }
 
 export function buildReviewedMoves(moves: MoveEntry[], evaluations: PositionEvaluation[]): ReviewedMove[] {
-  return moves.slice(0, Math.max(0, evaluations.length - 1)).map((move, index) => ({
-    move, evaluation: evaluations[index + 1],
-    ...gradeMove(evaluations[index], evaluations[index + 1], move),
-  }));
+  return moves.slice(0, Math.max(0, evaluations.length - 1)).map((move, index) => {
+    const before = evaluations[index], after = evaluations[index + 1];
+    // Never compare depth-16 on one side with depth-10 on the other.
+    // A deep score for move N must not manufacture a blunder on move N-1.
+    const bothConfirmed = before.depth >= CONFIRM_DEPTH && after.depth >= CONFIRM_DEPTH;
+    const comparableBefore = bothConfirmed ? before : before.shallow ?? before;
+    const comparableAfter = bothConfirmed ? after : after.shallow ?? after;
+    const pendingVerification = needsDeepVerification(comparableBefore, comparableAfter, move) &&
+      !bothConfirmed;
+    return {
+      move, evaluation: after, pendingVerification,
+      ...(pendingVerification ? { grade: 'Unrated' as const, lossCp: null, betterMove: null }
+        : gradeMove(comparableBefore, comparableAfter, move)),
+    };
+  });
 }
 
 export function analysisSummary(moves: ReviewedMove[], humanWhite: boolean): {

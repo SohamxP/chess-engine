@@ -114,9 +114,13 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
       if (abort.signal.aborted) return;
       const played = gradeMove(before, candidate, { white: card.white, uci });
       const old = gradeMove(before, previous, { white: card.white, uci: card.originalUci });
-      const reliable = played.grade !== 'Unrated' && played.lossCp !== null;
+      // A verified forced-mate outcome is meaningful without a fabricated
+      // centipawn loss. It can still be practiced and scheduled.
+      const reliable = played.grade !== 'Unrated' &&
+        (played.lossCp !== null || (before.mate !== null && candidate.mate !== null));
       const success = reliable
-        ? (before.bestMove?.toLowerCase() === uci.toLowerCase() || played.lossCp! <= 60)
+        ? (before.bestMove?.toLowerCase() === uci.toLowerCase() ||
+          (played.lossCp !== null ? played.lossCp <= 60 : played.grade !== 'Blunder'))
         : null;
       // Rehearsals ahead of schedule are useful, but must not inflate recall streaks.
       const tracked = Date.parse(card.dueAt) <= Date.now();

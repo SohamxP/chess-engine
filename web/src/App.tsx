@@ -10,7 +10,7 @@ import {
   duePracticeCards, makePracticeCards, readPracticeCards, recordPracticeAttempt,
   removePracticeCard, writePracticeCards, type PracticeCard,
 } from './practice';
-import { analyzeGame, MAX_REVIEW_PLIES } from './analysis';
+import { analyzeGame } from './analysis';
 import { GameReviewPage, type ReviewState } from './GameReviewPage';
 import { PlayerStrip } from './PlayerStrip';
 import {
@@ -422,7 +422,8 @@ export default function App() {
     reviewController.current?.abort();
     reviewController.current = null;
     setReview(current => current ? {
-      ...current, running: false, error: 'Analysis stopped. Partial results are shown.',
+      ...current, running: false,
+      error: 'Analysis stopped. Resume to reuse locally cached positions.',
     } : null);
   }
 
@@ -432,17 +433,24 @@ export default function App() {
     reviewController.current?.abort();
     const controller = new AbortController();
     reviewController.current = controller;
-    const total = Math.min(target.moveHistory.length, MAX_REVIEW_PLIES) + 1;
-    setReview({ gameId: target.id, positions: [], total, running: true, error: null });
+    const total = target.moveHistory.length + 1;
+    setReview(previous => ({
+      gameId: target.id,
+      positions: previous?.gameId === target.id ? previous.positions : [],
+      progress: previous?.gameId === target.id ? previous.progress : undefined,
+      total, running: true, error: null,
+    }));
     setReviewPly(0);
     try {
-      const positions = await analyzeGame(target, controller.signal, (partial, count) => {
+      const positions = await analyzeGame(target, controller.signal, (partial, count, progress) => {
         if (!controller.signal.aborted) {
-          setReview({ gameId: target.id, positions: partial, total: count, running: true, error: null });
+          setReview({ gameId: target.id, positions: partial, progress,
+            total: count, running: true, error: null });
         }
       });
       if (!controller.signal.aborted) {
-        setReview({ gameId: target.id, positions, total, running: false, error: null });
+        setReview(previous => previous?.gameId === target.id
+          ? { ...previous, positions, total, running: false, error: null } : previous);
       }
     } catch (caught) {
       if (!controller.signal.aborted) {

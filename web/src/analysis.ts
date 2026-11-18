@@ -1,10 +1,23 @@
+import { Chess } from 'chess.js';
 import type { GameState } from './chess';
 import { startingFen } from './chess';
-import { parseUciScore, type PositionEvaluation } from './review';
+import { readCachedEvaluation, saveCachedEvaluation } from './analysisCache';
+import { CONFIRM_DEPTH, REVIEW_BASE_DEPTH, needsDeepVerification,
+  parseUciScore, type PositionEvaluation } from './review';
 
-export const REVIEW_DEPTH = 10;
-export const MAX_REVIEW_PLIES = 120;
+export const REVIEW_DEPTH = REVIEW_BASE_DEPTH;
+export const REVIEW_CONFIRM_DEPTH = CONFIRM_DEPTH;
+export const MAX_DEEP_CHECKS_PER_PASS = 24;
 const ENGINE_FILENAME = 'stockfish-19-lite-single.js';
+
+export interface AnalysisProgress {
+  phase: 'scan' | 'verify' | 'complete';
+  scanned: number;
+  cached: number;
+  verified: number;
+  pending: number;
+  suspects: number;
+}
 
 function abortError(): Error {
   return new Error('Analysis cancelled.');
@@ -50,20 +63,39 @@ async function prepareWorker(worker: Worker, signal: AbortSignal): Promise<void>
   let ready = waitForLine(worker, signal, 'uciok');
   worker.postMessage('uci');
   await ready;
-  // A small hash table keeps analysis modest on mobile devices.
+  // Single-threaded worker + small hash stays usable on mobile browsers.
   worker.postMessage('setoption name Hash value 8');
   ready = waitForLine(worker, signal, 'readyok');
   worker.postMessage('isready');
   await ready;
 }
 
-function evaluate(worker: Worker, fen: string, signal: AbortSignal): Promise<PositionEvaluation> {
+function terminalEvaluation(fen: string, depth: number): PositionEvaluation | null {
+  // Stockfish can return "bestmove (none)" without a score for checkmate/
+  // stalemate. Chess.js verifies game-over locally before starting a worker.
+  const chess = new Chess(fen);
+  if (chess.isCheckmate()) return {
+    cp: null, mate: chess.turn() === 'w' ? -0.01 : 0.01, bestMove: null, depth,
+  };
+  // Only automatically terminal draws. A claimable 50-move draw is not
+  // necessarily an ended game, and its FEN cannot encode repetition history.
+  if (chess.isStalemate() || chess.isInsufficientMaterial()) {
+    return { cp: 0, mate: null, bestMove: null, depth };
+  }
+  return null;
+}
+
+/** A single UCI search, with a finite per-position deadline and full cleanup. */
+function evaluate(worker: Worker, fen: string, depth: number,
+                  signal: AbortSignal): Promise<PositionEvaluation> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) { reject(abortError()); return; }
     const whiteToMove = fen.split(' ')[1] === 'w';
     let latest: PositionEvaluation = { cp: null, mate: null, bestMove: null, depth: 0 };
     let finished = false;
-    const timeout = window.setTimeout(() => finish(new Error('Analysis timed out on one position.')), 45000);
+    const timeout = window.setTimeout(() =>
+      finish(new Error('Analysis timed out on one position. Completed positions are cached.')),
+      depth > REVIEW_DEPTH ? 65000 : 45000);
     function cleanup() {
       window.clearTimeout(timeout);
       worker.removeEventListener('message', onMessage);
@@ -94,68 +126,159 @@ function evaluate(worker: Worker, fen: string, signal: AbortSignal): Promise<Pos
     worker.addEventListener('error', onError);
     signal.addEventListener('abort', onAbort, { once: true });
     worker.postMessage('position fen ' + fen);
-    worker.postMessage('go depth ' + REVIEW_DEPTH);
+    worker.postMessage('go depth ' + depth);
   });
 }
 
-/**
- * Evaluate arbitrary training positions using one disposable Web Worker.
- * Re-evaluating the baseline and both candidate moves at the same depth
- * avoids comparing old cached scores against a different analysis run.
- */
+function candidateSeverity(before: PositionEvaluation, after: PositionEvaluation,
+                           white: boolean): number {
+  if (before.cp !== null && after.cp !== null) {
+    return Math.max(0, (before.cp - after.cp) * (white ? 1 : -1));
+  }
+  return 1000; // Potential forced-mate shift or an incomplete evaluation.
+}
+
+/** Full game coverage, checkpointed after each position and refined in bounded passes. */
+export async function analyzeGame(
+  game: GameState,
+  signal: AbortSignal,
+  onProgress: (evaluations: PositionEvaluation[], total: number,
+    progress: AnalysisProgress) => void,
+): Promise<PositionEvaluation[]> {
+  isAborted(signal);
+  const fens = [game.initialFen || startingFen, ...game.moveHistory.map(move => move.fen)];
+  let worker: Worker | null = null;
+  let cached = 0;
+
+  async function obtain(fen: string, depth: number): Promise<PositionEvaluation> {
+    isAborted(signal);
+    const reuse = await readCachedEvaluation(fen, depth);
+    isAborted(signal);
+    if (reuse) { cached++; return reuse; }
+    const terminal = terminalEvaluation(fen, depth);
+    if (terminal) {
+      await saveCachedEvaluation(fen, depth, terminal);
+      isAborted(signal);
+      return terminal;
+    }
+    if (!worker) {
+      if (typeof Worker === 'undefined') {
+        throw new Error('Your browser does not support local chess analysis.');
+      }
+      worker = new Worker(import.meta.env.BASE_URL + 'engine/' + ENGINE_FILENAME);
+      await prepareWorker(worker, signal);
+    }
+    const evaluation = await evaluate(worker, fen, depth, signal);
+    isAborted(signal);
+    await saveCachedEvaluation(fen, depth, evaluation);
+    isAborted(signal);
+    return evaluation;
+  }
+
+  try {
+    const base: PositionEvaluation[] = [];
+    let lastUpdate = 0;
+    for (const fen of fens) {
+      base.push(await obtain(fen, REVIEW_DEPTH));
+      // Avoid a React re-render for every half-move in very long games.
+      const now = Date.now();
+      if (base.length === fens.length || base.length === 1 ||
+          (base.length % 5 === 0 && now - lastUpdate > 120)) {
+        lastUpdate = now;
+        onProgress([...base], fens.length, {
+          phase: 'scan', scanned: base.length, cached, verified: 0, pending: 0, suspects: 0,
+        });
+      }
+    }
+
+    // Prioritize a player's most costly decisions. Other positions still
+    // receive their base-depth analysis and can be confirmed in a later pass.
+    const suspects = game.moveHistory
+      .map((move, index) => ({ index, white: move.white,
+        severity: candidateSeverity(base[index], base[index + 1], move.white) }))
+      .filter(({ index }) => needsDeepVerification(
+        base[index], base[index + 1], game.moveHistory[index]))
+      .sort((a, b) => Number(b.white === game.humanWhite) -
+        Number(a.white === game.humanWhite) || b.severity - a.severity || a.index - b.index);
+
+    const refined = [...base];
+    let verified = 0;
+    let deepChecks = 0;
+    onProgress([...refined], fens.length, {
+      phase: 'verify', scanned: fens.length, cached, verified, pending: suspects.length,
+      suspects: suspects.length,
+    });
+
+    for (const { index } of suspects) {
+      isAborted(signal);
+      const beforeCached = await readCachedEvaluation(fens[index], CONFIRM_DEPTH);
+      const afterCached = await readCachedEvaluation(fens[index + 1], CONFIRM_DEPTH);
+      isAborted(signal);
+      const fullyCached = !!beforeCached && !!afterCached;
+      if (!fullyCached && deepChecks >= MAX_DEEP_CHECKS_PER_PASS) continue;
+      if (!fullyCached) deepChecks++;
+      if (beforeCached) cached++;
+      if (afterCached) cached++;
+      refined[index] = { ...(beforeCached ?? await obtain(fens[index], CONFIRM_DEPTH)),
+        shallow: base[index] };
+      refined[index + 1] = { ...(afterCached ?? await obtain(fens[index + 1], CONFIRM_DEPTH)),
+        shallow: base[index + 1] };
+      if (refined[index].depth >= CONFIRM_DEPTH &&
+          refined[index + 1].depth >= CONFIRM_DEPTH) verified++;
+      onProgress([...refined], fens.length, {
+        phase: 'verify', scanned: fens.length, cached, verified,
+        pending: suspects.length - verified, suspects: suspects.length,
+      });
+    }
+
+    isAborted(signal);
+    onProgress([...refined], fens.length, {
+      phase: 'complete', scanned: fens.length, cached, verified,
+      pending: suspects.length - verified, suspects: suspects.length,
+    });
+    return refined;
+  } finally {
+    // Worker is assigned in the async obtain() closure, invisible to TS narrowing.
+    (worker as Worker | null)?.terminate();
+  }
+}
+
+/** Practice retries compare all three alternatives at the same settings. */
 export async function analyzePositions(
   fens: string[], signal: AbortSignal,
 ): Promise<PositionEvaluation[]> {
   isAborted(signal);
-  if (typeof Worker === 'undefined') {
-    throw new Error('Your browser does not support local chess analysis.');
-  }
   if (fens.length === 0 || fens.length > 3) {
     throw new Error('Expected one to three practice positions.');
   }
-  const worker = new Worker(import.meta.env.BASE_URL + 'engine/' + ENGINE_FILENAME);
+  let worker: Worker | null = null;
   try {
-    await prepareWorker(worker, signal);
     const results: PositionEvaluation[] = [];
     for (const fen of fens) {
       isAborted(signal);
-      results.push(await evaluate(worker, fen, signal));
+      const hit = await readCachedEvaluation(fen, REVIEW_DEPTH);
+      isAborted(signal);
+      if (hit) { results.push(hit); continue; }
+      const terminal = terminalEvaluation(fen, REVIEW_DEPTH);
+      if (terminal) {
+        results.push(terminal);
+        await saveCachedEvaluation(fen, REVIEW_DEPTH, terminal);
+        continue;
+      }
+      if (!worker) {
+        if (typeof Worker === 'undefined') {
+          throw new Error('Your browser does not support local chess analysis.');
+        }
+        worker = new Worker(import.meta.env.BASE_URL + 'engine/' + ENGINE_FILENAME);
+        await prepareWorker(worker, signal);
+      }
+      const result = await evaluate(worker, fen, REVIEW_DEPTH, signal);
+      isAborted(signal);
+      await saveCachedEvaluation(fen, REVIEW_DEPTH, result);
+      results.push(result);
     }
     return results;
   } finally {
-    worker.terminate();
-  }
-}
-
-/**
- * The Stockfish Lite WebAssembly engine runs entirely in the browser, never on
- * Render's shared Java server. It is only downloaded after user opt-in.
- * Each game is processed sequentially so iPhones do not spawn many workers.
- */
-export async function analyzeGame(
-  game: GameState,
-  signal: AbortSignal,
-  onProgress: (evaluations: PositionEvaluation[], total: number) => void,
-): Promise<PositionEvaluation[]> {
-  isAborted(signal);
-  if (typeof Worker === 'undefined') {
-    throw new Error('Your browser does not support local chess analysis.');
-  }
-  const files = [
-    game.initialFen || startingFen,
-    ...game.moveHistory.slice(0, MAX_REVIEW_PLIES).map(item => item.fen),
-  ];
-  const worker = new Worker(import.meta.env.BASE_URL + 'engine/' + ENGINE_FILENAME);
-  try {
-    await prepareWorker(worker, signal);
-    const result: PositionEvaluation[] = [];
-    for (const fen of files) {
-      isAborted(signal);
-      result.push(await evaluate(worker, fen, signal));
-      onProgress([...result], files.length);
-    }
-    return result;
-  } finally {
-    worker.terminate();
+    worker?.terminate();
   }
 }

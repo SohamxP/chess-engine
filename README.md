@@ -181,17 +181,29 @@ docker run --rm -p 10000:10000 openfile-chess
 
 ## Game Review (Stockfish Lite)
 
-The optional **Review game** panel analyzes a completed or in-progress game
-move-by-move in the browser using the **Stockfish 19 Lite single-threaded
-WebAssembly** engine (fixed depth 10). Analysis runs locally in a Web Worker,
-not on the Spring Boot service, and starts only when you request it.
+The optional **Game Review** page evaluates all half-moves of a completed or
+in-progress game locally with the **Stockfish 19 Lite single-threaded WebAssembly**
+engine. A depth-10 scan covers the full game, then potentially costly or ambiguous
+decisions are rechecked at depth 16. Up to 24 candidate moves are checked per
+pass to control CPU use on phones; **Continue verification** handles remaining
+candidates without losing completed work.
 
-It provides an evaluation graph (from White's point of view), approximate move
-grades, and a recommended alternative for clearly problematic moves. The
-thresholds are heuristic, and **depth-10 evaluations are estimates, not
-authoritative chess assessments**. Long games analyze at most the first 120
-half-moves, with progress and a cancel option. Ending an analysis early retains
-the portion already evaluated. Review calculations are not persisted across reloads, but game snapshots can be saved for read-only replay in this browser.
+A provisional depth-10 blunder is **not** presented as an established mistake
+or added to Decision Lab. Move grading waits for matching deeper evaluations
+of both sides of suspicious moves. Position scores are compared at compatible
+depths; checkmate and stalemate are handled explicitly, and ambiguous mate vs.
+centipawn transitions are not converted into imaginary pawn losses. Scores and
+move classifications remain **heuristic**, not authoritative chess assessments.
+
+Completed positions are cached in a bounded, versioned **IndexedDB** store
+(roughly 2,400 position/depth entries), with an in-memory fallback when storage is
+unavailable. Cache keys include the full FEN, engine version, hash configuration,
+and target depth; changes to these settings invalidate stale results. Stopping
+analysis leaves completed positions cached, and reopening the game or clicking
+**Resume analysis** reuses them. The review progress indicator distinguishes a
+quick scan from deeper verification and shows reused evaluations. Analysis runs
+in a disposable Web Worker **only on your device**, not on the Java server.
+Large games can take multiple passes, especially on slower mobile hardware.
 
 **License:** Stockfish.js 19.0.1 is GNU GPLv3 software. The browser engine is
 distributed unmodified from the [stockfish npm package](https://www.npmjs.com/package/stockfish/v/19.0.1);
