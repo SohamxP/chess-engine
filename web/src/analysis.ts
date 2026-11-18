@@ -77,7 +77,11 @@ function terminalEvaluation(fen: string, depth: number): PositionEvaluation | nu
   if (chess.isCheckmate()) return {
     cp: null, mate: chess.turn() === 'w' ? -0.01 : 0.01, bestMove: null, depth,
   };
-  if (chess.isDraw()) return { cp: 0, mate: null, bestMove: null, depth };
+  // Only automatically terminal draws. A claimable 50-move draw is not
+  // necessarily an ended game, and its FEN cannot encode repetition history.
+  if (chess.isStalemate() || chess.isInsufficientMaterial()) {
+    return { cp: 0, mate: null, bestMove: null, depth };
+  }
   return null;
 }
 
