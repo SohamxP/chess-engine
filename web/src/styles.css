@@ -468,3 +468,7 @@ button:focus-visible, a:focus-visible {
   .lab-library-row { flex-wrap: wrap; }
   .lab-library-actions { width: 100%; }
 }
+
+.lab-reflection { padding: 13px; border: 1px solid #dce6da; border-radius: 6px; background: #f7faf5; margin: 15px 0; }
+.lab-reflection strong { font-size: 12px; color: #2e513b; }
+.lab-reflection p { margin: 8px 0 0; }
