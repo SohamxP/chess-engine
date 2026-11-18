@@ -97,6 +97,10 @@ export function moveNotation(uci: string): string {
 
 export function statusLabel(game: GameState): string {
   switch (game.status) {
+    case 'IMPORTED_WHITE_WIN': return 'Imported game · White won';
+    case 'IMPORTED_BLACK_WIN': return 'Imported game · Black won';
+    case 'IMPORTED_DRAW': return 'Imported game · Draw';
+    case 'IMPORTED_UNFINISHED': return 'Imported game · Result unknown';
     case 'IN_PROGRESS':
       return game.aiTurn ? 'The engine is thinking' : game.inCheck ? 'Check — your move' : 'Your move';
     case 'WHITE_RESIGNED': return 'Black wins · White resigned';
@@ -124,7 +128,10 @@ export function kingSquare(board: BoardMap, white: boolean): string | null {
 
 /** Final game scores use the traditional chess result format. */
 export function resultScore(game: Pick<GameState, 'status' | 'whiteToMove'>): string | null {
-  if (game.status === 'IN_PROGRESS') return null;
+  if (game.status === 'IN_PROGRESS' || game.status === 'IMPORTED_UNFINISHED') return null;
+  if (game.status === 'IMPORTED_WHITE_WIN') return '1-0';
+  if (game.status === 'IMPORTED_BLACK_WIN') return '0-1';
+  if (game.status === 'IMPORTED_DRAW') return '1/2-1/2';
   if (game.status === 'WHITE_RESIGNED') return '0-1';
   if (game.status === 'BLACK_RESIGNED') return '1-0';
   if (game.status === 'CHECKMATE') return game.whiteToMove ? '0-1' : '1-0';
