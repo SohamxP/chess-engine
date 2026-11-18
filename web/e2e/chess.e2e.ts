@@ -549,7 +549,7 @@ test('My Games preserves a playable match for offline review and exports PGN', a
   const downloadPromise = page.waitForEvent('download');
   await card.getByRole('button', { name: 'Download PGN' }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/openfile-.+\.pgn$/);
+  expect(download.suggestedFilename()).toMatch(/plyforge-.+\.pgn$/);
 
   await card.getByRole('button', { name: 'Review', exact: true }).click();
   await expect(page).toHaveURL(/\?review=/);
