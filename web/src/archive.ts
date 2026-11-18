@@ -126,7 +126,7 @@ export function downloadPgn(game: GameState, savedAt = new Date().toISOString())
   const link = document.createElement('a');
   const day = savedAt.slice(0, 10);
   link.href = href;
-  link.download = 'openfile-' + day + '-' + game.id.slice(0, 8) + '.pgn';
+  link.download = 'plyforge-' + day + '-' + game.id.slice(0, 8) + '.pgn';
   document.body.append(link);
   link.click();
   link.remove();
