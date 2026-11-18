@@ -6,7 +6,7 @@ import {
 import type { MoveEntry } from './chess';
 
 const evaluation = (cp: number, bestMove: string | null = null): PositionEvaluation =>
-  ({ cp, mate: null, bestMove, depth: 10 });
+  ({ cp, mate: null, bestMove, depth: 16 });
 const move = (white: boolean, uci: string): MoveEntry =>
   ({ ply: 1, white, ai: !white, uci, san: uci, fen: '' });
 
@@ -89,4 +89,62 @@ describe('Stockfish game review', () => {
       .toBeNull();
   });
 
+});
+
+
+describe('PR #20: verified analysis and safe mate grading', () => {
+  it('withholds a preliminary blunder until both positions reach confirmation depth', () => {
+    const shallow = (cp: number, best: string | null = null): PositionEvaluation =>
+      ({ cp, mate: null, depth: 10, bestMove: best });
+    const white = move(true, 'a2a3');
+    const unverified = buildReviewedMoves([white],
+      [shallow(200, 'e2e4'), shallow(-150)]);
+    expect(unverified[0].grade).toBe('Unrated');
+    expect(unverified[0].pendingVerification).toBe(true);
+    expect(unverified[0].lossCp).toBeNull();
+
+    const halfVerified = buildReviewedMoves([white],
+      [evaluation(200, 'e2e4'), shallow(-150)]);
+    expect(halfVerified[0].grade).toBe('Unrated');
+    const verified = buildReviewedMoves([white],
+      [evaluation(200, 'e2e4'), evaluation(-150)]);
+    expect(verified[0].pendingVerification).toBe(false);
+    expect(verified[0].grade).toBe('Blunder');
+  });
+
+  it('does not declare a best move when search scores disagree by 300cp', () => {
+    expect(gradeMove(evaluation(250, 'e2e4'), evaluation(-50), move(true, 'e2e4')).grade)
+      .toBe('Blunder');
+  });
+
+  it('never converts a mate-to-centipawn transition into a giant pawn loss', () => {
+    const mate = (number: number): PositionEvaluation =>
+      ({ cp: null, mate: number, bestMove: 'd1h5', depth: 16 });
+    expect(gradeMove(mate(3), evaluation(40), move(true, 'a2a3'))).toEqual({
+      grade: 'Unrated', lossCp: null, betterMove: null,
+    });
+    expect(gradeMove(mate(3), mate(5), move(true, 'a2a3'))).toEqual({
+      grade: 'Good', lossCp: 0, betterMove: null,
+    });
+    expect(gradeMove(mate(3), mate(-2), move(true, 'a2a3'))).toEqual({
+      grade: 'Blunder', lossCp: null, betterMove: 'd1h5',
+    });
+    expect(buildReviewedMoves([move(true, 'a2a3')], [mate(3), mate(-2)])[0].grade)
+      .toBe('Blunder');
+  });
+
+  it('ignores MultiPV alternatives to avoid replacing principal-variation scores', () => {
+    expect(parseUciScore('info depth 16 multipv 2 score cp 110 pv e2e4', true)).toBeNull();
+    expect(parseUciScore('info depth 16 multipv 1 score cp 90 pv d2d4', true)?.bestMove)
+      .toBe('d2d4');
+  });
+
+  it('does not force deep verification for ordinary small eval shifts', () => {
+    const cases = [
+      evaluation(100, 'e2e4'), evaluation(85),
+    ];
+    const reviewed = buildReviewedMoves([move(true, 'd2d4')], cases);
+    expect(reviewed[0].grade).toBe('Good');
+    expect(reviewed[0].pendingVerification).toBe(false);
+  });
 });
