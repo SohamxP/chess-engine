@@ -123,8 +123,15 @@ describe('PGN import parser', () => {
     expect(duplicate.imported).toBe(0);
     expect(duplicate.duplicates).toBe(1);
     expect(duplicate.games).toEqual(original.games);
-    const changedMetadata = { ...parsed, source: { ...parsed.source, site: 'another-exporter' } };
-    expect(addPgnSelections(original.games, [{ parsed: changedMetadata, humanWhite: true }]).duplicates).toBe(1);
+    // Different real matches can happen to follow the same mainline.
+    // Their distinct source game URLs must not be collapsed into one game.
+    const otherMatch = first(gameOne.replace('https://lichess.org/example1',
+      'https://lichess.org/another-game'));
+    expect(sameMainline(parsed.game, otherMatch.game)).toBe(true);
+    expect(otherMatch.game.id).not.toBe(parsed.game.id);
+    const separate = addPgnSelections(original.games, [{ parsed: otherMatch, humanWhite: true }]);
+    expect(separate.imported).toBe(1);
+    expect(separate.games).toHaveLength(2);
   });
 
   it('protects existing saved games when the 50-record archive is full', () => {
