@@ -99,6 +99,35 @@ function evaluate(worker: Worker, fen: string, signal: AbortSignal): Promise<Pos
 }
 
 /**
+ * Evaluate arbitrary training positions using one disposable Web Worker.
+ * Re-evaluating the baseline and both candidate moves at the same depth
+ * avoids comparing old cached scores against a different analysis run.
+ */
+export async function analyzePositions(
+  fens: string[], signal: AbortSignal,
+): Promise<PositionEvaluation[]> {
+  isAborted(signal);
+  if (typeof Worker === 'undefined') {
+    throw new Error('Your browser does not support local chess analysis.');
+  }
+  if (fens.length === 0 || fens.length > 3) {
+    throw new Error('Expected one to three practice positions.');
+  }
+  const worker = new Worker(import.meta.env.BASE_URL + 'engine/' + ENGINE_FILENAME);
+  try {
+    await prepareWorker(worker, signal);
+    const results: PositionEvaluation[] = [];
+    for (const fen of fens) {
+      isAborted(signal);
+      results.push(await evaluate(worker, fen, signal));
+    }
+    return results;
+  } finally {
+    worker.terminate();
+  }
+}
+
+/**
  * The Stockfish Lite WebAssembly engine runs entirely in the browser, never on
  * Render's shared Java server. It is only downloaded after user opt-in.
  * Each game is processed sequentially so iPhones do not spawn many workers.
