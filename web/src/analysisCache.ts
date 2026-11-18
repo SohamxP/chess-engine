@@ -104,10 +104,14 @@ export async function saveCachedEvaluation(
   if (!db) return;
   await new Promise<void>(resolve => {
     try {
-      const req = db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME)
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      // Wait for COMMIT, not the request's success, so a reload immediately
+      // after the UI reports completion cannot discard the last checkpoint.
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
+      tx.objectStore(STORE_NAME)
         .put({ key, evaluation, storedAt: Date.now() } satisfies StoredEvaluation);
-      req.onsuccess = () => resolve();
-      req.onerror = () => resolve();
     } catch {
       resolve();
     }
