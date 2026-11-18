@@ -15,6 +15,7 @@ interface Attempt {
   bestSan: string | null;
   success: boolean | null;
   saved: boolean;
+  tracked: boolean;
   previousPlan: string;
 }
 
@@ -111,13 +112,15 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
       const success = reliable
         ? (before.bestMove?.toLowerCase() === uci.toLowerCase() || played.lossCp! <= 60)
         : null;
-      const saved = success === null ? false : onRecord(card.id, success, plan);
+      // Rehearsals ahead of schedule are useful, but must not inflate recall streaks.
+      const tracked = Date.parse(card.dueAt) <= Date.now();
+      const saved = success === null || !tracked ? false : onRecord(card.id, success, plan);
       setAttempt({
         fen: position.fen(), san: move.san, uci,
         grade: played.grade, lossCp: played.lossCp,
         originalLossCp: old.lossCp,
         bestSan: before.bestMove ? uciToSan(card.fen, before.bestMove) : null,
-        success, saved, previousPlan: card.lastPlan,
+        success, saved, tracked, previousPlan: card.lastPlan,
       });
     } catch (caught) {
       if (!abort.signal.aborted) {
@@ -146,6 +149,21 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
     } else {
       void submitMove(choices[0].from, choices[0].to);
     }
+  }
+
+  function focusCard(id: string) {
+    if (card?.id === id) {
+      controller.current?.abort();
+      controller.current = null;
+      setSelected(null);
+      setPromotions([]);
+      setPlan('');
+      setAttemptFen(null);
+      setAttempt(null);
+      setChecking(false);
+      setWorkError(null);
+    }
+    setActiveId(id);
   }
 
   function goToNext() {
@@ -277,9 +295,12 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
                   : <p>{attempt.success
                     ? 'You found a move close to the engine recommendation. This position will return after a longer interval as your recall streak grows.'
                     : 'The engine sees a stronger continuation. Review your plan and try to recognize the idea when this position returns.'}</p>}
-                {attempt.success !== null && !attempt.saved &&
+                {attempt.success !== null && !attempt.tracked &&
+                  <p>This was early practice. It did not change your recall streak or review date.</p>}
+                {attempt.success !== null && attempt.tracked && !attempt.saved &&
                   <div className="error-message" role="alert">The result could not be saved in this browser.</div>}
-                {attempt.saved && <p className="lab-due-note">Next review: {dueLabel(cards.find(item => item.id === card.id)?.dueAt ?? card.dueAt)}</p>}
+                {attempt.success !== null && (attempt.saved || !attempt.tracked) &&
+                  <p className="lab-due-note">Next review: {dueLabel(cards.find(item => item.id === card.id)?.dueAt ?? card.dueAt)}</p>}
                 <button type="button" className="btn-primary" onClick={goToNext}>
                   {nextDue ? 'Next due decision' : 'Finish session'}
                 </button>
@@ -300,7 +321,7 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
                   <span>{Date.parse(item.dueAt) <= Date.now() ? 'Due now' : 'Due ' + dueLabel(item.dueAt)} · {item.attempts} attempts · {item.streak} recalls</span>
                 </div>
                 <div className="lab-library-actions">
-                  <button type="button" className="btn-secondary" onClick={() => setActiveId(item.id)}>Practice</button>
+                  <button type="button" className="btn-secondary" onClick={() => focusCard(item.id)}>Practice</button>
                   {confirmRemove === item.id ? (
                     <>
                       <button type="button" className="archive-confirm-delete" onClick={() => {
