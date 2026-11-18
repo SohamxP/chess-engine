@@ -139,6 +139,19 @@ describe('PR #20: verified analysis and safe mate grading', () => {
       .toBe('d2d4');
   });
 
+  it('never compares depth-16 and depth-10 scores when neighboring moves share a position', () => {
+    const initial = evaluation(100, 'e2e4');
+    const afterFirst = {
+      ...evaluation(-320, 'e7e5'), shallow: { ...evaluation(95), depth: 10 },
+    };
+    const afterSecond = { ...evaluation(90), depth: 10 };
+    const rows = buildReviewedMoves([move(true, 'd2d4'), move(false, 'e7e5')],
+      [initial, afterFirst, afterSecond]);
+    expect(rows[0].grade).toBe('Blunder'); // Both first positions are high depth.
+    expect(rows[1].grade).toBe('Good'); // Base scores 95 to 90, not -320 to 90.
+    expect(rows[1].pendingVerification).toBe(false);
+  });
+
   it('does not force deep verification for ordinary small eval shifts', () => {
     const cases = [
       evaluation(100, 'e2e4'), evaluation(85),
