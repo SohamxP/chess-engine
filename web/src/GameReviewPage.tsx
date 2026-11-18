@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { PlayerStrip } from './PlayerStrip';
+import type { PgnSource } from './archive';
 import { frameAtPly, resultScore, type GameState } from './chess';
 import { analysisSummary, buildReviewedMoves, formatEvaluation, numericEvaluation, uciToSan, type PositionEvaluation } from './review';
 import { MAX_REVIEW_PLIES, REVIEW_DEPTH } from './analysis';
@@ -12,7 +13,7 @@ export interface ReviewState {
   error: string | null;
 }
 
-export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onAnalyze, onStop, onDownload, onBuildPractice, isArchived = false }: {
+export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onAnalyze, onStop, onDownload, onBuildPractice, source, isArchived = false }: {
   game: GameState;
   board: ReactNode;
   ply: number;
@@ -23,6 +24,7 @@ export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onA
   onStop: () => void;
   onDownload: () => void;
   onBuildPractice: () => void;
+  source?: PgnSource;
   isArchived?: boolean;
 }) {
   const count = game.moveHistory.length;
@@ -64,7 +66,8 @@ export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onA
         <div className="review-heading-actions">
           <button className="btn-secondary" type="button" onClick={onDownload}>Download PGN</button>
           <div className="review-result">
-            <span>Human vs. computer</span><strong>{resultScore(game) ?? 'In progress'}</strong>
+            <span>{source ? source.white + ' vs. ' + source.black : 'Human vs. computer'}</span>
+              <strong>{resultScore(game) ?? (source ? 'Result unknown' : 'In progress')}</strong>
           </div>
         </div>
       </header>
@@ -76,9 +79,11 @@ export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onA
       )}
       <div className="review-layout">
         <section className="review-board-column" aria-label="Review board">
-          <PlayerStrip game={game} player="computer" ply={ply} />
+          <PlayerStrip game={game} player="computer" ply={ply}
+            label={source ? (game.humanWhite ? source.black : source.white) : undefined} />
           {board}
-          <PlayerStrip game={game} player="human" ply={ply} />
+          <PlayerStrip game={game} player="human" ply={ply}
+            label={source ? (game.humanWhite ? source.white : source.black) : undefined} />
           <nav className="review-playback" aria-label="Move review controls">
             <button type="button" aria-label="First position"
               disabled={ply === 0} onClick={() => onSelect(0)}>⟪</button>
