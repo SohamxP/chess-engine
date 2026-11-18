@@ -43,6 +43,7 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [checking, setChecking] = useState(false);
   const [workError, setWorkError] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
 
   const due = duePracticeCards(cards);
@@ -65,6 +66,7 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
     setAttempt(null);
     setChecking(false);
     setWorkError(null);
+    setConfirmRemove(null);
   }, [card?.id]);
 
   useEffect(() => () => controller.current?.abort(), []);
@@ -242,6 +244,13 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
               <p className="review-description">Write a reason, not just a move. Optional, but useful when you revisit the position.</p>
               {checking && <p className="lab-thinking" role="status">Comparing your move and the original with local Stockfish…</p>}
               {workError && <div className="error-message" role="alert">{workError}</div>}
+              {workError && attemptFen && !checking && !attempt && (
+                <button type="button" className="btn-secondary" onClick={() => {
+                  setAttemptFen(null);
+                  setSelected(null);
+                  setWorkError(null);
+                }}>Reset position and try again</button>
+              )}
               {!attemptFen && <p className="lab-prompt">Now make your move on the board. Engine hints are hidden.</p>}
             </section>
             {attempt && (
@@ -292,10 +301,18 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
                 </div>
                 <div className="lab-library-actions">
                   <button type="button" className="btn-secondary" onClick={() => setActiveId(item.id)}>Practice</button>
-                  <button type="button" className="archive-remove" onClick={() => {
-                    if (activeId === item.id) setActiveId('');
-                    onDelete(item.id);
-                  }}>Remove</button>
+                  {confirmRemove === item.id ? (
+                    <>
+                      <button type="button" className="archive-confirm-delete" onClick={() => {
+                        if (activeId === item.id) setActiveId('');
+                        onDelete(item.id);
+                        setConfirmRemove(null);
+                      }}>Confirm remove</button>
+                      <button type="button" className="archive-remove" onClick={() => setConfirmRemove(null)}>Cancel</button>
+                    </>
+                  ) : (
+                    <button type="button" className="archive-remove" onClick={() => setConfirmRemove(item.id)}>Remove</button>
+                  )}
                 </div>
               </div>
             ))}
