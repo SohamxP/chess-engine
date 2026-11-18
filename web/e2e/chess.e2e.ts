@@ -747,3 +747,28 @@ test('imports uploaded .pgn files without sending PGN content to an API', async 
   await expect(page.locator('.archive-game-card')).toHaveCount(1);
   expect(uploaded).toBe(false);
 });
+
+test('custom FEN PGN keeps original fullmove numbering and Black-side orientation', async ({ page }) => {
+  await page.getByRole('button', { name: /My Games/ }).click();
+  await page.getByRole('button', { name: 'Import PGN' }).click();
+  const pgn = `[Event "Endgame"]
+[White "Opponent"]
+[Black "Soham"]
+[SetUp "1"]
+[FEN "4k3/8/8/8/8/8/8/4K3 b - - 0 12"]
+[Result "*"]
+
+12... Kd7 13. Kd2 *`;
+  await page.getByLabel('Or paste PGN text').fill(pgn);
+  await page.getByRole('button', { name: 'Preview pasted games' }).click();
+  await page.getByRole('region', { name: 'PGN import preview' }).getByRole('combobox').selectOption('black');
+  await page.getByRole('button', { name: 'Import 1 selected game' }).click();
+  await page.locator('.archive-game-card').first().getByRole('button', { name: 'Review' }).click();
+  const review = page.getByRole('region', { name: 'Review notation' });
+  await expect(review.locator('.move-pair')).toHaveCount(2);
+  await expect(review.locator('.move-number').first()).toHaveText('12.');
+  await expect(review.locator('.move-number').last()).toHaveText('13.');
+  await expect(page.locator('.human-strip')).toContainText('Soham');
+  await expect(page.locator('.human-strip')).toContainText('Black');
+  await expect(page.getByRole('note')).toContainText('Imported PGN');
+});
