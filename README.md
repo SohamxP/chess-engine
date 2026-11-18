@@ -1,4 +1,4 @@
-# OpenFile Chess — Java Engine + React
+# PlyForge — Java Chess Engine + Decision Lab
 
 A full-stack human-versus-engine chess game. The **Java 25 chess engine** owns
 all move legality, game termination, position evaluation, and AI search. A
@@ -107,7 +107,7 @@ the other browser cases use the real API.
 
 ## Current limits
 
-Game sessions are **in memory**, and are lost when the Java process restarts, redeploys, or is suspended by free hosting. This project has no accounts, multiplayer, or persistence. AI difficulty changes search depth rather than time
+Game sessions are **in memory**, and are lost when the Java process restarts, redeploys, or is suspended by free hosting. Match sessions cannot resume after a restart. Browser-local game snapshots and Decision Lab cards persist only on the same device; there are no accounts, multiplayer or cloud sync. AI difficulty changes search depth rather than time
 budget; depth 3 may be slower on some positions. The React development server
 requires the Java API to be running separately.
 
@@ -174,7 +174,7 @@ grades, and a recommended alternative for clearly problematic moves. The
 thresholds are heuristic, and **depth-10 evaluations are estimates, not
 authoritative chess assessments**. Long games analyze at most the first 120
 half-moves, with progress and a cancel option. Ending an analysis early retains
-the portion already evaluated. Games are not persisted across server restarts.
+the portion already evaluated. Review calculations are not persisted across reloads, but game snapshots can be saved for read-only replay in this browser.
 
 **License:** Stockfish.js 19.0.1 is GNU GPLv3 software. The browser engine is
 distributed unmodified from the [stockfish npm package](https://www.npmjs.com/package/stockfish/v/19.0.1);
@@ -207,7 +207,7 @@ en-passant captures and promotions are handled without false capture counts.
 ## Saved Games (browser-only) & PGN
 
 As the free Render web service sleeps and its in-memory game sessions disappear,
-OpenFile Chess now automatically saves game states containing moves (and finished
+PlyForge now automatically saves game states containing moves (and finished
 zero-move games) into the **same browser's local storage**. Open **My Games** to
 see the latest 50 snapshots, their last update, result, difficulty, and moves.
 
@@ -226,4 +226,27 @@ rather than promising the match was saved.
 
 No sign-in, new services, subscriptions, or third-party infrastructure are
 required for this phase.
+
+
+## Decision Lab — learn from your own decisions
+
+The site's purpose is **playing, reflecting, and remembering**. A generic engine score shows what
+happened; Decision Lab turns your *own* imprecise moves into repeatable practice.
+
+1. Play a game and open **Game Review**. Start **Analyze game** to run local Stockfish analysis.
+2. Choose **Add N decisions to Decision Lab** after analysis identifies your own inaccuracies,
+   mistakes or blunders. Identical game/move pairs do not create duplicate cards.
+3. Open **Decision Lab** from the navigation. Choose a move on an interactive board without
+   seeing the engine's recommendation. Optionally write your plan first.
+4. Stockfish Lite evaluates the original position, your new attempt and the move you originally
+   played at the same depth. Compare approximate evaluation losses and the engine's suggested SAN.
+5. The attempt and note stay in local storage; successfully recalled positions reappear after
+   1, 3, 7, 14 and then 30 days. Unsuccessful attempts reset the interval to 1 day.
+
+**Limits and transparency:** This is not a guaranteed chess tutor. Depth-10 judgments are
+approximate; equivalent good moves are accepted within a 0.60-pawn tolerance. Analysis runs in
+a disposable browser Web Worker. Only game-derived positions are added, and at most 180
+training cards are retained. No paid LLM requests, tracking, account, backend database or
+cross-device synchronization are required. Clearing browser storage erases the training deck.
+The system deliberately does not show the engine's answer before a user commits a move.
 
