@@ -258,7 +258,7 @@ happened; Decision Lab turns your *own* imprecise moves into repeatable practice
 4. Stockfish Lite evaluates the original position, your new attempt and the move you originally
    played at the same depth. Compare approximate evaluation losses and the engine's suggested SAN.
 5. The attempt and note stay in local storage; successfully recalled positions reappear after
-   1, 3, 7, 14 and then 30 days. Unsuccessful attempts reset the interval to 1 day.
+   1, 3, 7, 14 and then 30 days. Unsuccessful attempts reset the interval to 1 day.\n   Practicing ahead of schedule is allowed but never inflates the recall streak.
 
 **Limits and transparency:** This is not a guaranteed chess tutor. Depth-10 judgments are
 approximate; equivalent good moves are accepted within a 0.60-pawn tolerance. Analysis runs in
