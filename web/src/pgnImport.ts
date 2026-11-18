@@ -82,6 +82,18 @@ function stableGameId(identity: string): string {
   return 'pgn-' + fnv(2166136261) + fnv(0x9e3779b9);
 }
 
+/**
+ * A repeated move sequence is not necessarily the same match. Prefer a
+ * game's unique site URL; otherwise combine its player/date/event tags.
+ * Headerless PGNs fall back to mainline-only deduplication.
+ */
+function sourceIdentity(source: PgnSource): string {
+  const site = source.site.trim().toLowerCase().replace(/\/$/, '');
+  if (/^https?:\/\/[^/]+\/\S+/i.test(site)) return 'url:' + site;
+  return [source.date, source.white, source.black, source.event, source.round, site]
+    .map(value => value.trim().toLowerCase()).join('|');
+}
+
 export function sameMainline(a: GameState, b: GameState): boolean {
   return (a.initialFen || startingFen) === (b.initialFen || startingFen) &&
     a.moveHistory.length === b.moveHistory.length &&
@@ -134,7 +146,8 @@ function parseOne(input: string): ParsedPgn {
     date: safeHeader(headers.Date, '????.??.??'),
     round: safeHeader(headers.Round, '-'),
   };
-  const identity = initialFen + '|' + moveHistory.map(move => move.uci).join(',');
+  const identity = initialFen + '|' + moveHistory.map(move => move.uci).join(',')
+    + '|' + sourceIdentity(source);
   const game: GameState = {
     id: stableGameId(identity),
     initialFen,
@@ -193,7 +206,8 @@ export function addPgnSelections(
   const next = [...existing];
   let imported = 0, duplicates = 0, full = 0, collisions = 0;
   for (const { parsed, humanWhite } of choices) {
-    if (next.some(item => sameMainline(item.game, parsed.game))) {
+    if (next.some(item => sameMainline(item.game, parsed.game) &&
+        (!item.source || sourceIdentity(item.source) === sourceIdentity(parsed.source)))) {
       duplicates++;
       continue;
     }
