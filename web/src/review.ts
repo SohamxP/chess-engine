@@ -9,6 +9,8 @@ export interface PositionEvaluation {
   /** UCI move favored by Stockfish from this exact position. */
   bestMove: string | null;
   depth: number;
+  /** Quick-depth score retained alongside a deeper score for adjacent moves. */
+  shallow?: PositionEvaluation;
 }
 
 export type MoveGrade = 'Best' | 'Good' | 'Inaccuracy' | 'Mistake' | 'Blunder' | 'Unrated';
@@ -127,12 +129,17 @@ export function gradeMove(before: PositionEvaluation, after: PositionEvaluation,
 export function buildReviewedMoves(moves: MoveEntry[], evaluations: PositionEvaluation[]): ReviewedMove[] {
   return moves.slice(0, Math.max(0, evaluations.length - 1)).map((move, index) => {
     const before = evaluations[index], after = evaluations[index + 1];
-    const pendingVerification = needsDeepVerification(before, after, move) &&
-      (before.depth < CONFIRM_DEPTH || after.depth < CONFIRM_DEPTH);
+    // Never compare depth-16 on one side with depth-10 on the other.
+    // A deep score for move N must not manufacture a blunder on move N-1.
+    const bothConfirmed = before.depth >= CONFIRM_DEPTH && after.depth >= CONFIRM_DEPTH;
+    const comparableBefore = bothConfirmed ? before : before.shallow ?? before;
+    const comparableAfter = bothConfirmed ? after : after.shallow ?? after;
+    const pendingVerification = needsDeepVerification(comparableBefore, comparableAfter, move) &&
+      !bothConfirmed;
     return {
       move, evaluation: after, pendingVerification,
       ...(pendingVerification ? { grade: 'Unrated' as const, lossCp: null, betterMove: null }
-        : gradeMove(before, after, move)),
+        : gradeMove(comparableBefore, comparableAfter, move)),
     };
   });
 }
