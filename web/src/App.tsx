@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { api } from './api';
-import { archiveGame, downloadPgn, readArchive, removeArchivedGame, type ArchivedGame } from './archive';
+import { archiveGame, downloadPgn, readArchive, removeArchivedGame,
+  writeArchive, type ArchivedGame } from './archive';
+import { addPgnSelections, type PgnSelection } from './pgnImport';
+import type { PgnImportCommit } from './PgnImportPanel';
 import { SavedGamesPage } from './SavedGamesPage';
 import { DecisionLabPage } from './DecisionLabPage';
 import {
@@ -385,6 +388,20 @@ export default function App() {
     if (!game) void newGame(true, 2);
   }
 
+  function importPgnGames(choices: PgnSelection[]): PgnImportCommit {
+    // Read the authoritative browser snapshot, not possibly stale UI state.
+    const current = readArchive();
+    const outcome = addPgnSelections(current, choices);
+    const saved = outcome.imported === 0 || writeArchive(outcome.games);
+    if (saved && outcome.imported > 0) {
+      setSavedGames(outcome.games);
+      setArchiveError(null);
+    } else if (!saved) {
+      setArchiveError('Could not save imported games. Browser storage may be blocked or full.');
+    }
+    return { ...outcome, saved };
+  }
+
   function deleteSavedGame(id: string) {
     const result = removeArchivedGame(id);
     if (result.saved) {
@@ -751,14 +768,18 @@ export default function App() {
           onDelete={deletePractice} onBack={returnFromLab} error={practiceError} />
       ) : onGames ? (
         <SavedGamesPage games={savedGames} onReview={openSavedReview}
-          onDelete={deleteSavedGame} onBack={returnFromGames} error={archiveError} />
+          onDelete={deleteSavedGame} onBack={returnFromGames} onImport={importPgnGames}
+          error={archiveError} />
       ) : onReview ? (
         activeReviewGame ? <GameReviewPage game={activeReviewGame}
           ply={reviewPly ?? activeReviewGame.moveHistory.length}
           review={review} onSelect={setReviewPly} onBack={returnToGame}
           isArchived={archivedGame !== null}
-          onDownload={() => downloadPgn(activeReviewGame, savedGames.find(item =>
-            item.id === activeReviewGame.id)?.savedAt)}
+          source={savedGames.find(item => item.id === activeReviewGame.id)?.source}
+          onDownload={() => {
+            const snapshot = savedGames.find(item => item.id === activeReviewGame.id);
+            downloadPgn(activeReviewGame, snapshot?.savedAt, snapshot?.source);
+          }}
           onAnalyze={() => void startReview()} onStop={stopReview}
           onBuildPractice={buildDecisionDeck}
           board={<ChessBoard game={activeReviewGame} busy={true} motion={null}
