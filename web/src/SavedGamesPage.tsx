@@ -30,7 +30,7 @@ function ArchivedGameCard({ item, onReview, onDelete }: {
       </div>
       <p className="archive-result">{statusLabel(game)} · {item.source ? 'Reviewing' : 'Playing'} {game.humanWhite ? 'White' : 'Black'}</p>
       <p className="archive-moves">{game.moveHistory.length} half-moves · {item.source
-        ? 'PGN import · ' + item.source.date
+        ? 'PGN import · ' + item.source.event + ' · ' + item.source.date
         : 'Level ' + game.depth}</p>
       <div className="archive-card-actions">
         <button className="btn-primary" type="button" onClick={() => onReview(item)}>Review</button>
