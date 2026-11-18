@@ -203,3 +203,27 @@ each player's name**, sorted by type. A `+N` indicator denotes the player's
 current material lead (pawns=1, knights/bishops=3, rooks=5, queens=9).
 Captured pieces are reconstructed from the stored move/FEN history, so
 en-passant captures and promotions are handled without false capture counts.
+
+## Saved Games (browser-only) & PGN
+
+As the free Render web service sleeps and its in-memory game sessions disappear,
+OpenFile Chess now automatically saves game states containing moves (and finished
+zero-move games) into the **same browser's local storage**. Open **My Games** to
+see the latest 50 snapshots, their last update, result, difficulty, and moves.
+
+Saved snapshots are **review-only**: opening one does not resume a game on the
+Java server. Even after Render restarts or expires the game ID, you can review
+the board and moves or analyze them with the local Stockfish worker, entirely
+from a snapshot. Direct review URLs prefer the locally saved snapshot and do
+not require the original server session to exist.
+
+Each saved game and the dedicated Review screen can **Download PGN**, containing
+standard SAN move text, players, result, date, and initial FEN for custom
+starting positions. A PGN file is the portable backup. Local browser storage
+does not synchronize across devices, can be disabled or cleared, and is not a
+substitute for a future server-side database. When storage fails, the app warns
+rather than promising the match was saved.
+
+No sign-in, new services, subscriptions, or third-party infrastructure are
+required for this phase.
+
