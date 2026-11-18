@@ -26,7 +26,7 @@ function fixture(): GameState {
 }
 
 const evalAt = (cp: number, bestMove: string): PositionEvaluation => ({
-  cp, mate: null, bestMove, depth: 10,
+  cp, mate: null, bestMove, depth: 16,
 });
 const analysis = [
   evalAt(0, 'd2d4'), evalAt(-200, 'e7e5'), evalAt(-160, 'b1c3'), evalAt(-500, 'b8c6'),
@@ -89,6 +89,13 @@ describe('Decision Lab practice deck', () => {
       { ...cards[0], fen: 'invalid' }, cards[1], cards[1], { ...cards[0], dueAt: 'bad' },
     ]));
     expect(readPracticeCards(storage)).toEqual([cards[1]]);
+  });
+
+  it('never creates lessons from unverified depth-10 mistake candidates', () => {
+    const preliminary = analysis.map(position => ({ ...position, depth: 10 }));
+    const { cards, added } = makePracticeCards(fixture(), preliminary, [], time);
+    expect(added).toBe(0);
+    expect(cards).toEqual([]);
   });
 
   it('does not introduce corrupted pre-move positions to a training deck', () => {
