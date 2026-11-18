@@ -549,7 +549,7 @@ test('My Games preserves a playable match for offline review and exports PGN', a
   const downloadPromise = page.waitForEvent('download');
   await card.getByRole('button', { name: 'Download PGN' }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/openfile-.+\.pgn$/);
+  expect(download.suggestedFilename()).toMatch(/plyforge-.+\.pgn$/);
 
   await card.getByRole('button', { name: 'Review', exact: true }).click();
   await expect(page).toHaveURL(/\?review=/);
@@ -582,4 +582,54 @@ test('My Games is responsive on narrow mobile browsers', async ({ page }) => {
   const overflow = await page.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test('Decision Lab evaluates a blind retry, records the plan and survives reload on mobile', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => {
+    const now = '2020-01-01T00:00:00.000Z';
+    localStorage.setItem('plyforge-decision-lab-v1', JSON.stringify([{
+      id: 'lesson:1', gameId: 'lesson', ply: 1,
+      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      white: true, originalUci: 'e2e4', originalSan: 'e4',
+      addedAt: now, dueAt: now, streak: 0, attempts: 0,
+      lastPlan: '', lastSuccess: null,
+    }]));
+  });
+  await page.goto('/?lab=1');
+  await expect(page.getByRole('heading', { name: 'Decision Lab' })).toBeVisible();
+  const labBoard = page.getByRole('group', { name: 'Decision Lab chess board' });
+  await expect(labBoard.getByRole('button')).toHaveCount(64);
+  await expect(page.getByRole('region', { name: 'Decision feedback' })).toHaveCount(0);
+  await expect(page.getByText('Due now', { exact: true }).first()).toBeVisible();
+  await page.getByLabel('What is your plan in this position?')
+    .fill('I want to open the center and develop my bishop.');
+  await labBoard.getByRole('button', { name: /^e2 white pawn/ }).click();
+  await labBoard.getByRole('button', { name: /^e4 empty, legal destination/ }).click();
+  await expect(page.getByRole('region', { name: 'Decision feedback' }))
+    .toContainText('Your original move (e4)', { timeout: 120_000 });
+  await expect(page.getByRole('region', { name: 'Decision feedback' }))
+    .toContainText('Engine suggestion');
+  await expect(labBoard.getByRole('button', { name: /^e4 white pawn/ })).toBeDisabled();
+  const record = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('plyforge-decision-lab-v1') ?? '[]')[0]);
+  expect(record.attempts).toBe(1);
+  expect(record.lastPlan).toBe('I want to open the center and develop my bishop.');
+  expect(Date.parse(record.dueAt)).toBeGreaterThan(Date.now());
+
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Decision Lab' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'You are caught up.' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Your decision library' })).toContainText('1 attempts');
+  const overflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Your decision library' }))
+    .toContainText('1 attempts');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm remove' }).click();
+  await expect(page.getByRole('heading', { name: 'Your practice deck is empty.' })).toBeVisible();
 });
