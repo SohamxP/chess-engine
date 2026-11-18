@@ -12,7 +12,7 @@ export interface ReviewState {
   error: string | null;
 }
 
-export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onAnalyze, onStop }: {
+export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onAnalyze, onStop, onDownload, isArchived = false }: {
   game: GameState;
   board: ReactNode;
   ply: number;
@@ -21,6 +21,8 @@ export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onA
   onBack: () => void;
   onAnalyze: () => void;
   onStop: () => void;
+  onDownload: () => void;
+  isArchived?: boolean;
 }) {
   const count = game.moveHistory.length;
   const reviewed = review && review.gameId === game.id
@@ -58,10 +60,19 @@ export function GameReviewPage({ game, board, ply, review, onSelect, onBack, onA
           <h1>Game Review</h1>
           <p>Walk through your game, understand each move, and find opportunities to improve.</p>
         </div>
-        <div className="review-result">
-          <span>Human vs. computer</span><strong>{resultScore(game) ?? 'In progress'}</strong>
+        <div className="review-heading-actions">
+          <button className="btn-secondary" type="button" onClick={onDownload}>Download PGN</button>
+          <div className="review-result">
+            <span>Human vs. computer</span><strong>{resultScore(game) ?? 'In progress'}</strong>
+          </div>
         </div>
       </header>
+      {isArchived && (
+        <div className="archive-review-note" role="note">
+          This is a saved snapshot on this device. You can replay or analyze it, but cannot
+          resume the original server game after its session expires.
+        </div>
+      )}
       <div className="review-layout">
         <section className="review-board-column" aria-label="Review board">
           <PlayerStrip game={game} player="computer" ply={ply} />

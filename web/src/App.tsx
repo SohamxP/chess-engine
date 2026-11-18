@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { api } from './api';
+import { archiveGame, downloadPgn, readArchive, removeArchivedGame, type ArchivedGame } from './archive';
+import { SavedGamesPage } from './SavedGamesPage';
 import { analyzeGame, MAX_REVIEW_PLIES } from './analysis';
 import { GameReviewPage, type ReviewState } from './GameReviewPage';
 import { PlayerStrip } from './PlayerStrip';
@@ -253,12 +255,21 @@ export default function App() {
   const historyList = useRef<HTMLDivElement>(null);
   const [onReview, setOnReview] = useState(
     () => new URLSearchParams(window.location.search).has('review'));
+  const [onGames, setOnGames] = useState(
+    () => new URLSearchParams(window.location.search).has('games'));
+  const [archivedGame, setArchivedGame] = useState<GameState | null>(null);
+  const [reviewReturn, setReviewReturn] = useState<'game' | 'games'>('game');
+  const [savedGames, setSavedGames] = useState<ArchivedGame[]>(() => readArchive());
+  const [archiveError, setArchiveError] = useState<string | null>(null);
   const [initialReviewError, setInitialReviewError] = useState<string | null>(null);
   const reviewController = useRef<AbortController | null>(null);
   const [review, setReview] = useState<ReviewState | null>(null);
 
   function openReview(ply = 0) {
     if (!game || busy) return;
+    setArchivedGame(null);
+    setReviewReturn('game');
+    setOnGames(false);
     setReviewPly(Math.max(0, Math.min(game.moveHistory.length, ply)));
     setDismissedResult(game.id + ':' + game.status + ':' + game.moveHistory.length);
     if (!onReview) {
@@ -268,12 +279,54 @@ export default function App() {
     window.scrollTo(0, 0);
   }
 
+  function openSavedReview(item: ArchivedGame) {
+    clearReview();
+    setArchivedGame(item.game);
+    setReviewReturn('games');
+    setReviewPly(item.game.moveHistory.length);
+    setInitialReviewError(null);
+    window.history.pushState({}, '', '?review=' + encodeURIComponent(item.id));
+    setOnGames(false);
+    setOnReview(true);
+    window.scrollTo(0, 0);
+  }
+
+  function openGames() {
+    if (reviewController.current) stopReview();
+    setReviewPly(null);
+    setArchivedGame(null);
+    window.history.pushState({}, '', '?games=1');
+    setOnReview(false);
+    setOnGames(true);
+    window.scrollTo(0, 0);
+  }
+
   function returnToGame() {
     if (reviewController.current) stopReview();
-    window.history.replaceState({}, '', window.location.pathname);
+    const backToGames = reviewReturn === 'games' || !game;
+    window.history.replaceState({}, '', backToGames ? '?games=1' : window.location.pathname);
     setOnReview(false);
+    setOnGames(backToGames);
+    setArchivedGame(null);
     setReviewPly(null);
     window.scrollTo(0, 0);
+  }
+
+  function returnFromGames() {
+    window.history.replaceState({}, '', window.location.pathname);
+    setOnGames(false);
+    window.scrollTo(0, 0);
+    if (!game) void newGame(true, 2);
+  }
+
+  function deleteSavedGame(id: string) {
+    const result = removeArchivedGame(id);
+    if (result.saved) {
+      setSavedGames(result.games);
+      setArchiveError(null);
+    } else {
+      setArchiveError('Could not remove this game. Browser storage may be blocked.');
+    }
   }
 
   function clearReview() {
@@ -291,11 +344,11 @@ export default function App() {
   }
 
   async function startReview() {
-    if (!game || busy || game.moveHistory.length === 0) return;
+    const target = archivedGame ?? game;
+    if (!target || busy || target.moveHistory.length === 0) return;
     reviewController.current?.abort();
     const controller = new AbortController();
     reviewController.current = controller;
-    const target = game;
     const total = Math.min(target.moveHistory.length, MAX_REVIEW_PLIES) + 1;
     setReview({ gameId: target.id, positions: [], total, running: true, error: null });
     setReviewPly(0);
@@ -370,11 +423,37 @@ export default function App() {
   }
 
   useEffect(() => {
+    // Auto-save full game snapshots on every server-confirmed state update.
+    // The browser snapshot remains reviewable after Render discards the session.
+    if (!game || (game.moveHistory.length === 0 && game.status === 'IN_PROGRESS')) return;
+    try {
+      const { games, saved } = archiveGame(game);
+      if (saved) {
+        setSavedGames(games);
+        setArchiveError(null);
+      } else {
+        setArchiveError('Browser storage is full or unavailable. Download PGN to keep a copy.');
+      }
+    } catch {
+      setArchiveError('Browser storage is unavailable. Download PGN to keep a copy.');
+    }
+  }, [game]);
+
+  useEffect(() => {
     if (mounted.current) return;
     mounted.current = true;
-    const gameId = new URLSearchParams(window.location.search).get('review');
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('games')) return;
+    const gameId = params.get('review');
     if (!gameId) {
       void newGame(true, 2);
+      return;
+    }
+    const local = readArchive().find(item => item.id === gameId);
+    if (local) {
+      setArchivedGame(local.game);
+      setReviewReturn('games');
+      setReviewPly(0);
       return;
     }
     setBusy(true);
@@ -390,23 +469,47 @@ export default function App() {
 
   useEffect(() => {
     function handleNavigation() {
-      const gameId = new URLSearchParams(window.location.search).get('review');
-      if (!gameId) {
-        if (reviewController.current) {
-          reviewController.current.abort();
-          reviewController.current = null;
-          setReview(current => current?.running ? { ...current, running: false, error: 'Analysis stopped.' } : current);
-        }
+      const params = new URLSearchParams(window.location.search);
+      const gameId = params.get('review');
+      if (reviewController.current) {
+        reviewController.current.abort();
+        reviewController.current = null;
+        setReview(current => current?.running
+          ? { ...current, running: false, error: 'Analysis stopped.' } : current);
+      }
+      if (params.has('games')) {
+        setOnGames(true);
         setOnReview(false);
+        setArchivedGame(null);
         setReviewPly(null);
+        return;
+      }
+      setOnGames(false);
+      if (!gameId) {
+        setOnReview(false);
+        setArchivedGame(null);
+        setReviewPly(null);
+        if (!game) void newGame(true, 2);
+        return;
+      }
+      setOnReview(true);
+      setReviewPly(0);
+      const saved = readArchive().find(item => item.id === gameId);
+      if (saved) {
+        setArchivedGame(saved.game);
+        setReviewReturn('games');
+      } else if (game?.id === gameId) {
+        setArchivedGame(null);
+        setReviewReturn('game');
       } else {
-        setOnReview(true);
-        setReviewPly(0);
-        if (game?.id !== gameId) {
-          void api.get(gameId).then(setGame).catch(caught => {
-            setInitialReviewError(caught instanceof Error ? caught.message : 'Game could not be loaded.');
-          });
-        }
+        setArchivedGame(null);
+        void api.get(gameId).then(response => {
+          setGame(response);
+          setPlayAsWhite(response.humanWhite);
+          setDifficulty(response.depth);
+        }).catch(caught => {
+          setInitialReviewError(caught instanceof Error ? caught.message : 'Game could not be loaded.');
+        });
       }
     }
     window.addEventListener('popstate', handleNavigation);
@@ -422,7 +525,7 @@ export default function App() {
   }, [game?.moveHistory.length, reviewPly]);
 
   useEffect(() => {
-    const count = game?.moveHistory.length ?? 0;
+    const count = (onReview ? (archivedGame ?? game) : game)?.moveHistory.length ?? 0;
     function handleArrow(event: KeyboardEvent) {
       const left = event.key === 'ArrowLeft' || event.code === 'ArrowLeft';
       const right = event.key === 'ArrowRight' || event.code === 'ArrowRight';
@@ -442,7 +545,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handleArrow, { capture: true });
     return () => window.removeEventListener('keydown', handleArrow, { capture: true });
-  }, [game?.id, game?.status, game?.moveHistory.length, busy, onReview]);
+  }, [game?.id, game?.status, game?.moveHistory.length, archivedGame?.id, archivedGame?.moveHistory.length, busy, onReview]);
 
   async function makeMove(move: LegalMove) {
     if (!game || busy || game.aiTurn) return;
@@ -538,6 +641,7 @@ export default function App() {
     return rows;
   }, [game?.moveHistory]);
 
+  const activeReviewGame = archivedGame ?? game;
   const status = game
     ? reviewPly !== null
       ? 'Reviewing move ' + reviewPly + ' of ' + game.moveHistory.length
@@ -545,7 +649,7 @@ export default function App() {
     : 'Connecting to engine';
   const score = game ? resultScore(game) : null;
   const resultKey = game ? game.id + ':' + game.status + ':' + game.moveHistory.length : null;
-  const showResult = Boolean(score && !onReview && resultKey !== dismissedResult && !busy && !motion && reviewPly === null);
+  const showResult = Boolean(score && !onReview && !onGames && resultKey !== dismissedResult && !busy && !motion && reviewPly === null);
   const humanSide = game?.humanWhite ? 'White' : 'Black';
 
   return (
@@ -555,23 +659,36 @@ export default function App() {
           <div className="brand"><span className="logo-symbol" aria-hidden="true">♞</span>
             <span>OpenFile <strong>Chess</strong></span></div>
           <span className="topbar-caption">Play against the computer</span>
+          <button type="button" className="topbar-games" onClick={openGames}>
+            My Games {savedGames.length > 0 ? '(' + savedGames.length + ')' : ''}
+          </button>
           <a className="source-link" href="https://github.com/SohamxP/chess-engine"
             target="_blank" rel="noreferrer">View source <span aria-hidden="true">↗</span></a>
         </div>
       </header>
 
-      {onReview ? (
-        game ? <GameReviewPage game={game} ply={reviewPly ?? game.moveHistory.length}
+      {onGames ? (
+        <SavedGamesPage games={savedGames} onReview={openSavedReview}
+          onDelete={deleteSavedGame} onBack={returnFromGames} error={archiveError} />
+      ) : onReview ? (
+        activeReviewGame ? <GameReviewPage game={activeReviewGame}
+          ply={reviewPly ?? activeReviewGame.moveHistory.length}
           review={review} onSelect={setReviewPly} onBack={returnToGame}
+          isArchived={archivedGame !== null}
+          onDownload={() => downloadPgn(activeReviewGame, savedGames.find(item =>
+            item.id === activeReviewGame.id)?.savedAt)}
           onAnalyze={() => void startReview()} onStop={stopReview}
-          board={<ChessBoard game={game} busy={true} motion={null}
-            reviewPly={reviewPly ?? game.moveHistory.length} onMove={() => undefined} />} />
+          board={<ChessBoard game={activeReviewGame} busy={true} motion={null}
+            reviewPly={reviewPly ?? activeReviewGame.moveHistory.length} onMove={() => undefined} />} />
           : <main className="main-content">
               <div className="panel">
                 <h1>Game review unavailable</h1>
                 <p>{initialReviewError ?? 'Loading this game…'}</p>
-                <button type="button" className="btn-primary" onClick={() => {
-                  window.history.pushState({}, '', window.location.pathname);
+                <button type="button" className="btn-primary" onClick={openGames}>
+                  Open My Games
+                </button>
+                <button type="button" className="btn-secondary" onClick={() => {
+                  window.history.replaceState({}, '', window.location.pathname);
                   setOnReview(false);
                   void newGame(true, 2);
                 }}>Start a new game</button>

@@ -337,11 +337,12 @@ test('opening SAN history navigates to a dedicated review URL, and back preserve
 
   await page.getByRole('button', { name: 'First position' }).click();
   await expect(board(page)).toHaveAttribute('data-review-ply', '0');
+  // Reloaded reviews now use the local snapshot. They return to My Games,
+  // because the original Java session might no longer exist on Render.
   await page.getByRole('button', { name: 'Back to game' }).click();
-  await expect(page).not.toHaveURL(/\?review=/);
-  await expect(board(page)).toHaveAttribute('data-review-ply', 'live');
-  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
-  await expect(page.locator('.move-count')).toHaveText('2 MOVES');
+  await expect(page).toHaveURL(/\?games=1/);
+  await expect(page.getByRole('heading', { name: 'My Games' })).toBeVisible();
+  await expect(page.locator('.archive-game-card')).toHaveCount(1);
 });
 
 test('a later SAN move opens its exact historical position on the review page', async ({ page }) => {
@@ -523,4 +524,62 @@ test('captured pawn appears beneath player name and updates during SAN history r
   await expect(page.getByLabel('You captured 1 pieces')).toHaveCount(0);
   await page.getByRole('button', { name: 'Last position' }).click();
   await expect(page.getByLabel('You captured 1 pieces')).toBeVisible();
+});
+
+
+test('My Games preserves a playable match for offline review and exports PGN', async ({ page }) => {
+  await expect(page.getByText('Your move', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /My Games/ }).click();
+  await expect(page.getByRole('heading', { name: 'My Games' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'No saved games yet' })).toBeVisible();
+  await page.getByRole('button', { name: 'Play chess' }).click();
+
+  await board(page).getByRole('button', { name: /^e2 white p/ }).click();
+  await board(page).getByRole('button', { name: /^e4 empty, legal destination/ }).click();
+  await expect(page.locator('.move-count')).toHaveText('2 MOVES', { timeout: 45_000 });
+  await expect(page.getByRole('button', { name: /My Games \(1\)/ })).toBeVisible();
+  await page.getByRole('button', { name: /My Games/ }).click();
+  await expect(page).toHaveURL(/\?games=1/);
+  await expect(page.getByRole('heading', { name: 'My Games' })).toBeVisible();
+  await expect(page.getByText('Saved on this device')).toBeVisible();
+  const card = page.locator('.archive-game-card').first();
+  await expect(card).toContainText('2 half-moves');
+  await expect(card).toContainText('Unfinished');
+
+  const downloadPromise = page.waitForEvent('download');
+  await card.getByRole('button', { name: 'Download PGN' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/openfile-.+\.pgn$/);
+
+  await card.getByRole('button', { name: 'Review', exact: true }).click();
+  await expect(page).toHaveURL(/\?review=/);
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
+  await expect(page.getByRole('note')).toContainText('saved snapshot');
+  await expect(page.getByRole('region', { name: 'Review notation' })).toContainText('e4');
+
+  // Even if Render forgot the session, a saved snapshot reopens without calling the server.
+  await page.route('**/api/games/*', async route => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ status: 404, json: { message: 'Game expired' } });
+    } else await route.continue();
+  });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
+  await page.getByRole('button', { name: 'View position after move 1: e4' }).click();
+  await expect(board(page)).toHaveAttribute('data-review-ply', '1');
+
+  await page.getByRole('button', { name: 'Back to game' }).click();
+  await expect(page).toHaveURL(/\?games=1/);
+  await card.getByRole('button', { name: 'Remove' }).click();
+  await card.getByRole('button', { name: 'Confirm delete' }).click();
+  await expect(page.getByRole('heading', { name: 'No saved games yet' })).toBeVisible();
+});
+
+test('My Games is responsive on narrow mobile browsers', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.getByRole('button', { name: /My Games/ }).click();
+  await expect(page.getByRole('heading', { name: 'My Games' })).toBeVisible();
+  const overflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
 });
