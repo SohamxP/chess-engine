@@ -98,7 +98,7 @@ export function PgnImportPanel({ onImport }: {
     <section className="panel pgn-import-panel" aria-label="Import PGN">
       <div className="pgn-import-heading">
         <div>
-          <h2>Bring your games to PlyForge</h2>
+          <h2>Bring your games to PlySense</h2>
           <p>Import PGNs from Chess.com, Lichess or another standard chess source. No account connection needed.</p>
         </div>
         <button type="button" className="btn-secondary" aria-expanded={open}

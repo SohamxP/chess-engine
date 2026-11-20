@@ -5,6 +5,8 @@ const board = (page: import('@playwright/test').Page) =>
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await expect(page).toHaveTitle(/PlySense/);
+  await expect(page.locator('.brand')).toContainText('PlySense');
   await expect(board(page).getByRole('button')).toHaveCount(64);
 });
 
@@ -549,7 +551,7 @@ test('My Games preserves a playable match for offline review and exports PGN', a
   const downloadPromise = page.waitForEvent('download');
   await card.getByRole('button', { name: 'Download PGN' }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/plyforge-.+\.pgn$/);
+  expect(download.suggestedFilename()).toMatch(/plysense-.+\.pgn$/);
 
   await card.getByRole('button', { name: 'Review', exact: true }).click();
   await expect(page).toHaveURL(/\?review=/);

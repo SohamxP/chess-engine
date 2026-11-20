@@ -1,4 +1,4 @@
-name: Chess Engine Tests
+name: PlySense CI
 
 on:
   push:
@@ -40,12 +40,12 @@ jobs:
         working-directory: web
         run: npm run test:e2e
       - name: Build production Docker image
-        run: docker build --tag openfile-chess:ci .
+        run: docker build --tag plysense:ci .
       - name: Smoke test deployed site and API from the Docker image
         shell: bash
         run: |
-          docker run -d --name openfile-chess-ci -p 127.0.0.1:18500:10000 openfile-chess:ci
-          trap 'docker logs --tail 60 openfile-chess-ci; docker rm -f openfile-chess-ci' EXIT
+          docker run -d --name plysense-ci -p 127.0.0.1:18500:10000 plysense:ci
+          trap 'docker logs --tail 60 plysense-ci; docker rm -f plysense-ci' EXIT
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:18500/healthz | grep -q '^ok$'; then
               break
@@ -53,7 +53,7 @@ jobs:
             sleep 2
           done
           curl --fail --silent http://127.0.0.1:18500/healthz | grep -q '^ok$'
-          curl --fail --silent http://127.0.0.1:18500/ | grep -q 'OpenFile Chess'
+          curl --fail --silent http://127.0.0.1:18500/ | grep -q 'PlySense'
           curl --fail --silent -X POST http://127.0.0.1:18500/api/games \
             -H 'Content-Type: application/json' \
             -d '{"playAsWhite":true,"depth":1}' | grep -q '"status":"IN_PROGRESS"'

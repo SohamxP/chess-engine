@@ -65,7 +65,7 @@ export function SavedGamesPage({ games, onReview, onDelete, onBack, onImport, er
         <div>
           <button type="button" className="review-back" onClick={onBack}>← Back to game</button>
           <h1>My Games</h1>
-          <p>Review your games from PlyForge or import games played elsewhere.</p>
+          <p>Review your games from PlySense or import games played elsewhere.</p>
         </div>
         <span className="archive-total">{games.length} saved</span>
       </header>

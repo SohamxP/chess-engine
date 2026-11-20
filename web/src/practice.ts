@@ -2,6 +2,7 @@ import { Chess } from 'chess.js';
 import { frameAtPly, type GameState } from './chess';
 import { buildReviewedMoves, type PositionEvaluation } from './review';
 
+// Keep the original storage key to preserve existing practice cards and recall streaks.
 export const PRACTICE_KEY = 'plyforge-decision-lab-v1';
 export const MAX_PRACTICE_CARDS = 180;
 const INTERVAL_DAYS = [1, 3, 7, 14, 30];

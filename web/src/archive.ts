@@ -1,5 +1,6 @@
 import { resultScore, startingFen, type GameState } from './chess';
 
+// Preserve the legacy key so the branding change cannot delete existing game histories.
 export const ARCHIVE_KEY = 'openfile-chess-games-v1';
 export const MAX_ARCHIVED_GAMES = 50;
 
@@ -118,7 +119,7 @@ export function pgnForGame(game: GameState, date: string, source?: PgnSource): s
   const white = source?.white ?? (game.humanWhite ? 'You' : 'Computer');
   const black = source?.black ?? (game.humanWhite ? 'Computer' : 'You');
   const headers = [
-    '[Event "' + tagValue(source?.event ?? 'PlyForge') + '"]',
+    '[Event "' + tagValue(source?.event ?? 'PlySense') + '"]',
     '[Site "' + tagValue(source?.site ?? 'https://openfile-chess.onrender.com') + '"]',
     '[Date "' + tagValue(source?.date ?? dt) + '"]',
     '[Round "' + tagValue(source?.round ?? '-') + '"]',
@@ -152,7 +153,7 @@ export function downloadPgn(game: GameState, savedAt = new Date().toISOString(),
   const link = document.createElement('a');
   const day = savedAt.slice(0, 10);
   link.href = href;
-  link.download = 'plyforge-' + day + '-' + game.id.slice(0, 8) + '.pgn';
+  link.download = 'plysense-' + day + '-' + game.id.slice(0, 8) + '.pgn';
   document.body.append(link);
   link.click();
   link.remove();

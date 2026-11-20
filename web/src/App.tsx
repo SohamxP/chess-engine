@@ -758,7 +758,7 @@ export default function App() {
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand"><span className="logo-symbol" aria-hidden="true">♞</span>
-            <span><strong>PlyForge</strong></span></div>
+            <span><strong>PlySense</strong></span></div>
           <span className="topbar-caption">Play. Reflect. Improve.</span>
           <button type="button" className="topbar-games" onClick={openGames}>
             My Games {savedGames.length > 0 ? '(' + savedGames.length + ')' : ''}
@@ -961,7 +961,7 @@ export default function App() {
       )}
 
       <footer className="site-footer">
-        <span>PlyForge</span><span>Built with Java and React</span>
+        <span>PlySense</span><span>Built with Java and React</span>
       </footer>
 
       {confirmResign && (
