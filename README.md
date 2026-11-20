@@ -1,10 +1,10 @@
-# PlyForge — The Chess Decision Lab
+# PlySense — Your Personal Chess Improvement Engine
 
 **Play a game. Revisit the decisions that cost you. Practice a better idea before the engine reveals its answer. Remember it next week.**
 
-PlyForge is a full-stack chess game plus a private, spaced-recall training system built from *your own games*. Its focus is the thinking process: you can write down your plan, try a different legal move, compare that decision to your original move with local Stockfish analysis, and return when the position is due. No account, LLM API, or paid analysis service required.
+PlySense is a full-stack chess game plus a private, spaced-recall training system built from *your own games*. Its focus is the thinking process: you can write down your plan, try a different legal move, compare that decision to your original move with local Stockfish analysis, and return when the position is due. No account, LLM API, or paid analysis service required.
 
-**[Try the live app](https://openfile-chess.onrender.com/)** · [Read the Decision Lab guide](#decision-lab--learn-from-your-own-decisions)
+**[Try PlySense](https://openfile-chess.onrender.com/)** · [Read the Decision Lab guide](#decision-lab--learn-from-your-own-decisions)
 
 ### How it works
 
@@ -159,7 +159,7 @@ CORS setup or extra frontend host is required.
 
 1. Connect your GitHub repository `SohamxP/chess-engine` to [Render](https://dashboard.render.com/).
 2. In the Render dashboard select **New > Blueprint**, then choose the repo's `render.yaml`.
-3. Review the proposed service (`openfile-chess`) and **Free** plan before approving.
+3. Review the proposed service (`openfile-chess`, its unchanged legacy Render service name) and **Free** plan before approving.
 4. Deploy `main`. Render will assign a public HTTPS `*.onrender.com` address.
 
 The blueprint sets the health check to `/healthz`, and new commits are
@@ -174,8 +174,8 @@ with no persisted match data; verify Render usage/billing limits.
 ### Try the production container locally
 
 ```sh
-docker build -t openfile-chess .
-docker run --rm -p 10000:10000 openfile-chess
+docker build -t plysense .
+docker run --rm -p 10000:10000 plysense
 # Visit http://localhost:10000
 ```
 
@@ -236,7 +236,7 @@ en-passant captures and promotions are handled without false capture counts.
 ## Saved Games (browser-only) & PGN
 
 As the free Render web service sleeps and its in-memory game sessions disappear,
-PlyForge now automatically saves game states containing moves (and finished
+PlySense now automatically saves game states containing moves (and finished
 zero-move games) into the **same browser's local storage**. Open **My Games** to
 see the latest 50 snapshots, their last update, result, difficulty, and moves.
 
@@ -282,7 +282,7 @@ The system deliberately does not show the engine's answer before a user commits 
 
 ## Import games from other chess platforms (PGN)
 
-PlyForge does not require you to play chess here to improve. In **My Games → Import PGN**:
+PlySense does not require you to play chess here to improve. In **My Games → Import PGN**:
 
 1. Export a standard `.pgn` from Chess.com, Lichess or another chess site.
 2. Select one or more local PGN files, or paste the PGN text. Preview every parsed game;
@@ -297,7 +297,7 @@ PlyForge does not require you to play chess here to improve. In **My Games → I
    result, mainline SAN, and any custom starting FEN.
 
 The importer uses the existing **chess.js 1.4** library to validate each move and rebuild
-the move/FEN history; the Java backend still handles live PlyForge games. Imported outcomes
+the move/FEN history; the Java backend still handles live PlySense games. Imported outcomes
 are represented without assuming a player resigned. Re-importing the same source match is
 deduplicated using its starting position, full UCI mainline and available source identity
 (game URL, otherwise player/date/event tags). Distinct matches with the same moves can coexist.
