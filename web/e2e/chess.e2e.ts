@@ -5,6 +5,8 @@ const board = (page: import('@playwright/test').Page) =>
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  await expect(page).toHaveTitle(/PlySense/);
+  await expect(page.locator('.brand')).toContainText('PlySense');
   await expect(board(page).getByRole('button')).toHaveCount(64);
 });
 
