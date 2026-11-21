@@ -59,6 +59,16 @@ describe('adaptive training scheduling and records', () => {
     expect(adaptiveIntervalDays(cards[3], 3, counts)).toBe(7);
   });
 
+  it('uses distinct saved-game evidence even when only one position was saved for training', () => {
+    const onlyCard = [card('g1:1', ['missed-mate-one'])];
+    const analyzed = new Map([['missed-mate-one' as const, 3]]);
+    const next = recordPracticeAttempt(onlyCard, 'g1:1', true, '', time, analyzed);
+    const second = recordPracticeAttempt(next, 'g1:1', true, '', new Date(next[0].dueAt), analyzed);
+    const third = recordPracticeAttempt(second, 'g1:1', true, '', new Date(second[0].dueAt), analyzed);
+    expect(third[0].history?.map(row => row.intervalDays)).toEqual([1, 2, 4]);
+    expect(recurringThemeCounts(onlyCard, analyzed).get('missed-mate-one')).toBe(3);
+  });
+
   it('shortens successive recall intervals for repeated verified themes', () => {
     const tagged = [card('g1:1', ['missed-free-capture']),
       card('g2:1', ['missed-free-capture'])];
