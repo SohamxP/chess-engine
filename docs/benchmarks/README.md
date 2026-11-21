@@ -49,15 +49,36 @@ depth with two search modes already implemented in `ChessAI`:
 
 We test three deterministic positions: starting, tactical (a poisoned-queen
 capture), and a quiet pawn endgame. Inputs are **never mutated**. The benchmark
-asserts that both search strategies produce identical **scores** at the same
-depth; a disagreement is a correctness failure, not a performance win. Moves
-may differ when there are several equally valued choices.
+now compares **three** variants:
+
+- `without-pruning` — minimax reference (separate algorithmic comparison).
+- `alpha-beta-tt-repeated` — original alpha-beta/TT search, which generates
+  legal moves twice at most nonterminal nodes (once to check game status and
+  once for move ordering).
+- `alpha-beta-tt` — same search, same evaluation, same move ordering and
+  transposition keys, but reuses the legal move list during status checks and
+  move ordering. This also avoids duplicate generation in quiescence search.
+
+The two alpha-beta variants must produce the exact same best moves,
+scores and search statistics (nodes, cutoffs and TT hits). The unpruned
+reference must agree on score. Any disagreement is a correctness failure,
+not a performance win. We **do not** weaken legal move validation or change
+the FIDE game termination rules to obtain faster timings.
 
 ```sh
 mvn --batch-mode -q -DskipTests test-compile
 java -cp target/classes:target/test-classes com.chessengine.benchmark.EngineBenchmark \
   --depth=2 --warmup=3 --runs=15 > engine-baseline.csv
 ```
+
+For a controlled old-vs-new comparison, use the **two alpha-beta rows**
+and calculate median latency improvement as
+`(oldMedianMs - newMedianMs) / oldMedianMs * 100`. Rerun with
+`--depth=3 --warmup=5 --runs=15` on an idle local JDK 25 machine
+only if both depths complete in an acceptable duration. Small improvements
+at depth 1 are easily dominated by JIT/GC noise. Shared CI runners are for
+correctness and smoke results; their timing artifacts are not a defensible
+performance claim.
 
 The CSV includes median and p95 elapsed time, median nodes visited,
 alpha-beta cutoffs, transposition hits and quiescence nodes, optional
@@ -80,9 +101,12 @@ numbers or report a synthetic speedup.
    keys at every search node.
 2. Evaluate reversible make/unmake and an incremental position hash while
    preserving draw/repetition history and legal-move correctness.
-3. Re-run all perft, minimax-equivalence and benchmark tests before comparing
+3. Use the A/B benchmark to confirm whether the already-implemented move-list
+   reuse improves elapsed time and allocation without changing a single
+   search score, move, node count, or cutoff.
+4. Re-run all perft, minimax-equivalence and benchmark tests before comparing
    before/after results at identical depth, positions, JDK and machine.
-4. If profiling warrants it, add JMH microbenchmarks for copy/make/unmake,
+5. If profiling warrants it, add JMH microbenchmarks for copy/make/unmake,
    legal move generation and the transposition lookup separately.
 
 A search-time improvement that breaks perft or changes verified minimax
