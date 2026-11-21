@@ -1,9 +1,8 @@
-import { Chess, type Square } from 'chess.js';
+import { Chess } from 'chess.js';
 import type { ArchivedGame } from './archive';
 import { readCachedEvaluationBatch, evaluationCacheKey } from './analysisCache';
 import { CONFIRM_DEPTH, REVIEW_BASE_DEPTH, buildReviewedMoves,
   type PositionEvaluation, type ReviewedMove } from './review';
-import { frameAtPly } from './chess';
 
 export type PatternKind = 'missed-mate-one' | 'missed-free-capture' | 'exposed-major-piece';
 
