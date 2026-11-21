@@ -26,5 +26,8 @@
     "vitest": "4.0.7",
     "@playwright/test": "^1.56.1",
     "stockfish": "19.0.1"
+  },
+  "overrides": {
+    "rollup": "4.68.7"
   }
 }
