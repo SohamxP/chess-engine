@@ -197,6 +197,76 @@ async function pruneCachedEvaluations(db: IDBDatabase): Promise<void> {
   });
 }
 
+/** Portable, versioned analysis entries for local JSON backup/restore. */
+export interface PortableAnalysisEntry {
+  key: string;
+  evaluation: PositionEvaluation;
+  storedAt: number;
+}
+
+export function validPortableAnalysisEntry(value: unknown): value is PortableAnalysisEntry {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as Partial<PortableAnalysisEntry>;
+  if (typeof entry.key !== 'string' || !entry.key.startsWith(CACHE_NAMESPACE + '|hash8|depth') ||
+      !Number.isFinite(entry.storedAt) || (entry.storedAt ?? 0) < 0) return false;
+  const prefix = CACHE_NAMESPACE + '|hash8|depth';
+  const remainder = entry.key.slice(prefix.length);
+  const separator = remainder.indexOf('|');
+  if (separator < 0) return false;
+  const depthText = remainder.slice(0, separator);
+  const depth = Number(depthText);
+  return /^[1-9][0-9]*$/.test(depthText) && Number.isSafeInteger(depth) && depth <= 50 &&
+    remainder.slice(separator + 1).length > 0 &&
+    cacheableEvaluation(entry.evaluation, depth);
+}
+
+/** Export all durable cached evaluations without mutating their LRU order. */
+export async function exportCachedEvaluations(): Promise<PortableAnalysisEntry[]> {
+  const db = await database();
+  if (!db) return []; // No durable cache; transient memory is not a backup.
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).getAll();
+      req.onsuccess = () => resolve(
+        (req.result as unknown[]).filter(validPortableAnalysisEntry)
+          .sort((a, b) => b.storedAt - a.storedAt).slice(0, MAX_CACHE_POSITIONS));
+      req.onerror = () => reject(req.error ?? new Error('Could not read analysis cache'));
+    } catch (error) { reject(error); }
+  });
+}
+
+/** Import only missing keys. Never overwrite newer analysis already on the device. */
+export async function importCachedEvaluations(entries: PortableAnalysisEntry[]): Promise<number> {
+  if (!entries.every(validPortableAnalysisEntry) || entries.length > MAX_CACHE_POSITIONS) {
+    throw new Error('Backup contains unsupported cached evaluations');
+  }
+  if (!entries.length) return 0;
+  const db = await database();
+  if (!db) throw new Error('IndexedDB is unavailable for restoring analysis scores');
+  let added = 0;
+  await new Promise<void>((resolve, reject) => {
+    try {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error('Analysis cache restore failed'));
+      tx.onabort = () => reject(tx.error ?? new Error('Analysis cache restore aborted'));
+      for (const entry of entries) {
+        const exists = store.getKey(entry.key);
+        exists.onsuccess = () => {
+          if (exists.result === undefined) {
+            store.put(entry);
+            added++;
+          }
+        };
+      }
+    } catch (error) { reject(error); }
+  });
+  await pruneCachedEvaluations(db);
+  return added;
+}
+
 /** Used by tests to prove in-process cache invalidation without browser APIs. */
 export function clearMemoryAnalysisCache(): void {
   memory.clear();
