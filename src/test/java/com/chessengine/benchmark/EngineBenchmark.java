@@ -130,7 +130,7 @@ public final class EngineBenchmark {
 
     private static Sample sample(
         ChessAI ai, Game game, int depth, boolean optimized,
-        java.util.function.LongSupplier allocated,
+        java.util.function.LongSupplier allocated
     ) {
         long beforeAllocated = allocated.getAsLong();
         long started = System.nanoTime();
