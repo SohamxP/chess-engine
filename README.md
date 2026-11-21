@@ -36,6 +36,14 @@ invented or presented as user-performance claims**.
 The browser-based Stockfish reviewer is a separate component; its depth-16
 scores are not evidence of the strength of the custom Java opponent.
 
+## Reliability and integration validation
+
+PlySense now includes a reproducible **cross-feature browser regression** for
+two imported games, cached verified pattern detection, review-to-training
+navigation and offline persistence. Damaged browser-local saved games are
+filtered individually rather than blocking the entire archive.
+[Validation matrix, controlled fixture, acceptance steps and limitations](docs/validation/README.md).
+
 ## Requirements
 
 - JDK 25 and Maven
