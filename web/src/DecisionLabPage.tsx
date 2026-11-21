@@ -364,7 +364,8 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error, anal
                 <div className="lab-comparison">
                   <div><span>Your new move</span><strong>{attempt.lossCp === null ? '—' : (attempt.lossCp / 100).toFixed(2) + ' pawns lost'}</strong></div>
                   <div><span>Your original move ({card.originalSan})</span><strong>{attempt.originalLossCp === null ? '—' : (attempt.originalLossCp / 100).toFixed(2) + ' pawns lost'}</strong></div>
-                  <div><span>Engine suggestion</span><strong>{attempt.bestSan ?? 'Unavailable'}</strong></div>
+                  <div><span>{attempt.objectiveMate ? 'Legal checkmate' : 'Engine suggestion'}</span>
+                    <strong>{attempt.bestSan ?? 'Unavailable'}</strong></div>
                 </div>
                 <div className="lab-reflection">
                   <strong>Compare your reasoning</strong>
@@ -376,9 +377,13 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error, anal
                   board moves. No approximate engine score was needed.</p>}
                 {attempt.success === null
                   ? <p>Analysis could not score this reliably, so the practice schedule was not changed.</p>
-                  : <p>{attempt.success
-                    ? 'You found a move close to the engine recommendation. The next review depends on your recall streak and whether this verified theme recurs across games.'
-                    : 'The engine sees a stronger continuation. This decision returns tomorrow; repeated misses also increase its practice priority.'}</p>}
+                  : <p>{attempt.objectiveMate
+                    ? attempt.success
+                      ? 'You found a legal checkmate. It will return according to your recall streak and this theme\'s recurrence.'
+                      : 'You missed the immediate checkmate. This position will return tomorrow.'
+                    : attempt.success
+                      ? 'You found a move close to the engine recommendation. The next review depends on your recall streak and whether this verified theme recurs across games.'
+                      : 'The engine sees a stronger continuation. This decision returns tomorrow; repeated misses also increase its practice priority.'}</p>}
                 {attempt.success !== null && !attempt.tracked &&
                   <p>This was early practice. It did not change your recall streak or review date.</p>}
                 {attempt.success !== null && attempt.tracked && !attempt.saved &&
