@@ -1,3 +1,4 @@
+import { Chess } from 'chess.js';
 import { ARCHIVE_KEY, readArchive, validArchive, type ArchivedGame } from './archive';
 import { addPgnSelections, type PgnSelection, type PgnImportResult } from './pgnImport';
 import { readPracticeCards, validCard, writePracticeCards, type PracticeCard } from './practice';
@@ -219,7 +220,10 @@ export function parseLibraryBackup(text: string): LibraryBackup {
   }
   if (!data.games.every(validArchive) ||
       new Set(data.games.map(item => item.id)).size !== data.games.length ||
-      !data.practiceCards.every(validCard) ||
+      !data.practiceCards.every(item => {
+        if (!validCard(item)) return false;
+        try { new Chess(item.fen); return true; } catch { return false; }
+      }) ||
       new Set(data.practiceCards.map(item => item.id)).size !== data.practiceCards.length ||
       !data.evaluations.every(validPortableAnalysisEntry) ||
       new Set(data.evaluations.map(item => item.key)).size !== data.evaluations.length) {
