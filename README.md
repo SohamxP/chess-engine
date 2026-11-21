@@ -296,8 +296,8 @@ The first version uses three narrowly verifiable categories:
   blunder where Stockfish preferred capturing an unprotected knight, bishop,
   rook, or queen, with no legal immediate recapture.
 - **Exposed major piece:** a confirmed mistake or blunder after moving a rook
-  or queen into a legal capture by a cheaper opponent piece, with no legal
-  immediate recapture.
+  or queen into a legal capture by a cheaper opponent piece that Stockfish
+  selects as its best reply, with no legal immediate recapture.
 
 The material rules also require an estimated evaluation loss of **at least
 140 centipawns**. They inspect legal moves with `chess.js`, not SAN keywords.
