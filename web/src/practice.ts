@@ -112,7 +112,7 @@ export function makePracticeCards(
   };
 }
 
-function validCard(value: unknown): value is PracticeCard {
+export function validCard(value: unknown): value is PracticeCard {
   if (!value || typeof value !== 'object') return false;
   const v = value as Partial<PracticeCard>;
   return typeof v.id === 'string' && v.id.length > 0 &&
