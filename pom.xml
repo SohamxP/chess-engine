@@ -13,7 +13,7 @@
   <artifactId>chess-engine</artifactId>
   <name>PlySense</name>
   <description>Personal chess improvement engine with a custom Java backend</description>
-  <version>1.0-SNAPSHOT</version>
+  <version>1.0.0</version>
   <properties>
     <java.version>25</java.version>
     <maven.compiler.release>25</maven.compiler.release>

@@ -16,7 +16,7 @@ RUN mvn --batch-mode -q -DskipTests package
 
 FROM eclipse-temurin:25-jre-noble
 WORKDIR /app
-COPY --from=backend /build/target/chess-engine-1.0-SNAPSHOT.jar ./chess-engine.jar
+COPY --from=backend /build/target/chess-engine-1.0.0.jar ./chess-engine.jar
 ENV PORT=10000
 EXPOSE 10000
 # Keep heap below the Render Free 512 MiB limit; use spring port config.

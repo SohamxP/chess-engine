@@ -4,23 +4,38 @@
 
 PlySense is a full-stack chess game plus a private, spaced-recall training system built from *your own games*. Its focus is the thinking process: you can write down your plan, try a different legal move, compare that decision to your original move with local Stockfish analysis, and return when the position is due. No account, LLM API, or paid analysis service required.
 
-**[Try PlySense](https://openfile-chess.onrender.com/)** · [Read the Decision Lab guide](#decision-lab--learn-from-your-own-decisions)
+**[Try PlySense](https://openfile-chess.onrender.com/)** · [Architecture diagram](docs/architecture/README.md) · [v1.0 release notes](docs/release/v1.0.md) · [Demo walkthrough](docs/demo/README.md)
 
 ### How it works
 
 ```text
 Java chess engine (Java 25 + Spring Boot)
-      -> React 19 game board + FIDE move history
-      -> browser-local saved games
-      -> Stockfish 19 Lite Web Worker analyzes historical positions
-      -> human mistakes become Decision Lab cards
-      -> blind legal move + written plan
-      -> compare new move vs. original vs. engine suggestion
-      -> spaced review: 1 / 3 / 7 / 14 / 30 days
+      -> React 19 chessboard + FIDE move notation
+      -> IndexedDB game library (up to 2,000) + portable JSON backups
+      -> local Stockfish 19 Lite analyzes imported games
+      -> rule-backed My Patterns finds recurring errors across games
+      -> Decision Lab: blind legal move + written plan
+      -> adaptive spaced recall + progress with sample sizes
 ```
 
 **Engineering:** custom Java engine with legal moves, negamax/alpha-beta, iterative deepening, quiescence and transposition caching; React/TypeScript UI; Spring Boot REST; chess.js for legal offline practice and SAN formatting; Stockfish WASM in a disposable browser worker; IndexedDB game archives and JSON backups; Java, Vitest and real-browser Playwright tests; Dockerized deployment to Render.
 
+
+## PlySense v1.0
+
+The v1.0 release combines a custom Java chess engine with explainable
+cross-game mistake analysis, adaptive local training, and safe browser-local
+storage. All release claims are tied to the source code and automated tests.
+
+- **[System architecture and engineering tradeoffs](docs/architecture/README.md)**
+- **[Release notes, limitations and measured benchmarks](docs/release/v1.0.md)**
+- **[Reproducible product and technical demo](docs/demo/README.md)**
+- **[Game-library migration and portable backup](docs/storage/README.md)**
+
+A fixed-position, seven-run depth-2 CI comparison observed
+**24–29% lower median search latency** after reusing legal move generation,
+with identical search results. This is a bounded experiment, not a general
+claim about all devices or playing strength.
 
 ## Engine correctness and reproducible benchmarks
 

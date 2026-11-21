@@ -1,0 +1,47 @@
+name: Publish PlySense v1.0
+
+on:
+  workflow_run:
+    workflows: ["PlySense CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    # Tag only a tested, merged main-branch commit. Never release a PR build.
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the precise green commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Verify both release versions and release notes
+        shell: bash
+        run: |
+          grep -q '<version>1.0.0</version>' pom.xml
+          grep -q '"version": "1.0.0"' web/package.json
+          grep -q '/build/target/chess-engine-1.0.0.jar' Dockerfile
+          test -s docs/release/v1.0.md
+      - name: Publish v1.0.0 from verified commit if not already released
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          if gh release view v1.0.0 --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo 'PlySense v1.0.0 already published; not replacing an existing release.'
+            exit 0
+          fi
+          gh release create v1.0.0 \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${RELEASE_SHA}" \
+            --title "PlySense v1.0.0" \
+            --notes-file docs/release/v1.0.md \
+            --latest
