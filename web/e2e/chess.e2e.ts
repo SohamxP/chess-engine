@@ -808,3 +808,85 @@ test('Game Review caches completed Stockfish positions across page reloads', asy
   expect(await page.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
+
+
+test('My Patterns explains verified cached mistakes and opens the original move', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: /My Games/ }).click();
+  await page.getByRole('button', { name: 'Import PGN' }).click();
+  await page.getByLabel('Or paste PGN text').fill(`[Event "Pattern example"]
+[White "Soham"]
+[Black "Opponent"]
+[SetUp "1"]
+[FEN "4k3/8/8/8/8/8/3q4/K2R4 w - - 0 1"]
+[Result "*"]
+
+1. Rb1 *`);
+  await page.getByRole('button', { name: 'Preview pasted games' }).click();
+  await page.getByRole('button', { name: 'Import 1 selected game' }).click();
+  await expect(page.locator('.archive-game-card')).toHaveCount(1);
+
+  // Seed the browser analysis cache exactly as a completed depth-10 scan
+  // followed by a verified depth-16 recheck would. No Stockfish work is
+  // triggered from My Patterns itself.
+  await page.evaluate(async () => {
+    const archived = JSON.parse(localStorage.getItem('openfile-chess-games-v1') ?? '[]')[0];
+    const before = archived.game.initialFen as string;
+    const after = archived.game.moveHistory[0].fen as string;
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open('plyforge-analysis-cache-v1', 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        const store = db.createObjectStore('positions', { keyPath: 'key' });
+        store.createIndex('storedAt', 'storedAt');
+      };
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction('positions', 'readwrite');
+        const store = tx.objectStore('positions');
+        for (const depth of [10, 16]) {
+          for (const [fen, cp, bestMove] of [
+            [before, 140, 'd1d2'], [after, -190, null],
+          ] as [string, number, string | null][]) {
+            const key = 'stockfish-19-lite-v2|hash8|depth' + depth + '|' + fen;
+            store.put({ key, evaluation: { cp, mate: null, bestMove, depth },
+              storedAt: Date.now() });
+          }
+        }
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => reject(tx.error);
+      };
+    });
+  });
+
+  await page.getByRole('button', { name: 'My Patterns' }).click();
+  await expect(page).toHaveURL(/\?insights=1/);
+  const coverage = page.getByRole('region', { name: 'Pattern analysis coverage' });
+  await expect(coverage).toContainText('1 / 1');
+  await expect(coverage).toContainText('1');
+  const pattern = page.getByRole('region', { name: 'Missed free material' });
+  await expect(pattern).toContainText('Soham vs. Opponent');
+  await expect(pattern).toContainText('Rxd2');
+  await expect(pattern).toContainText('1 distinct game');
+  await expect(pattern).toContainText('Evidence from one game');
+  await pattern.getByRole('button', { name: 'Review position' }).click();
+  await expect(page).toHaveURL(/\?review=pgn-/);
+  await expect(board(page)).toHaveAttribute('data-review-ply', '1');
+  await page.getByRole('button', { name: 'Back to game' }).click();
+  await expect(page).toHaveURL(/\?insights=1/);
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Missed free material' }))
+    .toContainText('Rxd2');
+
+  expect(await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+test('My Patterns does not fabricate weaknesses from unanalysed saved games', async ({ page }) => {
+  await page.getByRole('button', { name: 'My Patterns' }).click();
+  await expect(page.getByRole('heading', { name: 'Personal Mistake Patterns' })).toBeVisible();
+  await expect(page.getByText('Start with a game')).toBeVisible();
+  await page.getByRole('button', { name: 'Open My Games' }).click();
+  await expect(page.getByRole('heading', { name: 'My Games' })).toBeVisible();
+});
