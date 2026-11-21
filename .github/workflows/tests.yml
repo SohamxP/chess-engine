@@ -20,6 +20,16 @@ jobs:
           cache: maven
       - name: Run Java engine and REST API tests
         run: mvn --batch-mode clean verify
+      - name: Smoke test standalone search benchmark (no timing assertions)
+        shell: bash
+        run: |
+          java -cp target/classes:target/test-classes \
+            com.chessengine.benchmark.EngineBenchmark --depth=1 --warmup=0 --runs=1 \
+            > engine-benchmark-smoke.csv
+          grep -q '^position,strategy,depth,runs,' engine-benchmark-smoke.csv
+          grep -q '^start,alpha-beta-tt,1,1,' engine-benchmark-smoke.csv
+          grep -q '^tactical,without-pruning,1,1,' engine-benchmark-smoke.csv
+          cat engine-benchmark-smoke.csv
       - name: Install Node.js 22
         uses: actions/setup-node@v4
         with:

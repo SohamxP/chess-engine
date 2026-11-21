@@ -22,6 +22,20 @@ Java chess engine (Java 25 + Spring Boot)
 **Engineering:** custom Java engine with legal moves, negamax/alpha-beta, iterative deepening, quiescence and transposition caching; React/TypeScript UI; Spring Boot REST; chess.js for legal offline practice and SAN formatting; Stockfish WASM in a disposable browser worker; localStorage archives; Java, Vitest and real-browser Playwright tests; Dockerized deployment to Render.
 
 
+## Engine correctness and reproducible benchmarks
+
+The custom Java engine is checked against published legal-move **perft**
+reference counts (starting position, Kiwipete, and a rook/pawn endgame), and
+includes a standalone command-line baseline vs. optimized search comparison
+showing nodes searched, cutoffs, transposition hits, timing percentiles and
+optional allocation counts. The comparison checks score agreement with the
+unpruned search; benchmark values depend on the machine and **are not
+invented or presented as user-performance claims**.
+
+**[Run and interpret the benchmark suite](docs/benchmarks/README.md)**.
+The browser-based Stockfish reviewer is a separate component; its depth-16
+scores are not evidence of the strength of the custom Java opponent.
+
 ## Requirements
 
 - JDK 25 and Maven
