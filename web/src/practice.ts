@@ -194,14 +194,18 @@ export function attachPatternEvidence(cards: PracticeCard[], evidence: PatternEv
 }
 
 /** Distinct games, not number of moves, determine whether a theme recurs. */
-export function recurringThemeCounts(cards: PracticeCard[]): Map<PatternKind, number> {
+export function recurringThemeCounts(
+  cards: PracticeCard[], analyzedGameCounts?: Map<PatternKind, number>,
+): Map<PatternKind, number> {
   const gamesByTheme = new Map<PatternKind, Set<string>>(
     PATTERN_ORDER.map(kind => [kind, new Set<string>()]),
   );
   for (const card of cards) {
     for (const kind of card.patterns ?? []) gamesByTheme.get(kind)?.add(card.gameId);
   }
-  return new Map(PATTERN_ORDER.map(kind => [kind, gamesByTheme.get(kind)?.size ?? 0]));
+  return new Map(PATTERN_ORDER.map(kind => [
+    kind, Math.max(gamesByTheme.get(kind)?.size ?? 0, analyzedGameCounts?.get(kind) ?? 0),
+  ]));
 }
 
 function urgency(card: PracticeCard, counts: Map<PatternKind, number>): number {
@@ -210,8 +214,10 @@ function urgency(card: PracticeCard, counts: Map<PatternKind, number>): number {
 }
 
 /** Due cards are prioritized by prior misses and repeated weaknesses. */
-export function duePracticeCards(cards: PracticeCard[], now = new Date()): PracticeCard[] {
-  const counts = recurringThemeCounts(cards);
+export function duePracticeCards(
+  cards: PracticeCard[], now = new Date(), analyzedGameCounts?: Map<PatternKind, number>,
+): PracticeCard[] {
+  const counts = recurringThemeCounts(cards, analyzedGameCounts);
   return cards.filter(card => Date.parse(card.dueAt) <= now.getTime())
     .sort((a, b) => urgency(b, counts) - urgency(a, counts) ||
       a.dueAt.localeCompare(b.dueAt) || a.addedAt.localeCompare(b.addedAt) ||
@@ -258,8 +264,9 @@ export function trainingProgress(cards: PracticeCard[], now = new Date()): Train
 /** A retry is recorded once after reliable evaluation and only when due. */
 export function recordPracticeAttempt(
   cards: PracticeCard[], id: string, success: boolean, plan: string, now = new Date(),
+  analyzedGameCounts?: Map<PatternKind, number>,
 ): PracticeCard[] {
-  const counts = recurringThemeCounts(cards);
+  const counts = recurringThemeCounts(cards, analyzedGameCounts);
   return cards.map(card => {
     if (card.id !== id || Date.parse(card.dueAt) > now.getTime()) return card;
     const streak = success ? card.streak + 1 : 0;
