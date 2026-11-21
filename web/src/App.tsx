@@ -273,7 +273,7 @@ export default function App() {
   const [practiceCards, setPracticeCards] = useState<PracticeCard[]>(() => readPracticeCards());
   const [practiceError, setPracticeError] = useState<string | null>(null);
   const [archivedGame, setArchivedGame] = useState<GameState | null>(null);
-  const [reviewReturn, setReviewReturn] = useState<'game' | 'games'>('game');
+  const [reviewReturn, setReviewReturn] = useState<'game' | 'games' | 'insights'>('game');
   const [savedGames, setSavedGames] = useState<ArchivedGame[]>(() => readArchive());
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [initialReviewError, setInitialReviewError] = useState<string | null>(null);
@@ -400,6 +400,7 @@ export default function App() {
     if (stored) {
       setSavedGames(readArchive());
       openSavedReview(stored, ply);
+      setReviewReturn('insights');
     } else {
       openGames();
     }
@@ -407,10 +408,13 @@ export default function App() {
 
   function returnToGame() {
     if (reviewController.current) stopReview();
-    const backToGames = reviewReturn === 'games' || !game;
-    window.history.replaceState({}, '', backToGames ? '?games=1' : window.location.pathname);
+    const backToInsights = reviewReturn === 'insights';
+    const backToGames = !backToInsights && (reviewReturn === 'games' || !game);
+    window.history.replaceState({}, '',
+      backToInsights ? '?insights=1' : backToGames ? '?games=1' : window.location.pathname);
     setOnReview(false);
     setOnLab(false);
+    setOnInsights(backToInsights);
     setOnGames(backToGames);
     setArchivedGame(null);
     setReviewPly(null);
