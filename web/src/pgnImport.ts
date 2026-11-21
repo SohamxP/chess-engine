@@ -201,7 +201,7 @@ export function parsePgnBatch(text: string): PgnPreview {
  * Do not evict existing games when the 50-snapshot archive is full.
  */
 export function addPgnSelections(
-  existing: ArchivedGame[], choices: PgnSelection[], now = new Date(),
+  existing: ArchivedGame[], choices: PgnSelection[], now = new Date(), capacity = MAX_ARCHIVED_GAMES,
 ): PgnImportResult {
   const next = [...existing];
   let imported = 0, duplicates = 0, full = 0, collisions = 0;
@@ -215,7 +215,7 @@ export function addPgnSelections(
       collisions++;
       continue;
     }
-    if (next.length >= MAX_ARCHIVED_GAMES) {
+    if (next.length >= capacity) {
       full++;
       continue;
     }

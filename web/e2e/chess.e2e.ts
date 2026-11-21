@@ -3,6 +3,21 @@ import { expect, test } from '@playwright/test';
 const board = (page: import('@playwright/test').Page) =>
   page.getByRole('group', { name: 'Interactive chess board' });
 
+/** Imported games are stored durably in IndexedDB, not the legacy localStorage key. */
+async function savedGamesFromIndexedDb(page: import('@playwright/test').Page) {
+  return page.evaluate(() => new Promise<Array<{ game: { initialFen: string;
+    moveHistory: Array<{ fen: string }> } }>>((resolve, reject) => {
+    const open = indexedDB.open('plysense-game-library-v1', 1);
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const db = open.result;
+      const query = db.transaction('games', 'readonly').objectStore('games').getAll();
+      query.onsuccess = () => { resolve(query.result); db.close(); };
+      query.onerror = () => { reject(query.error); db.close(); };
+    };
+  }));
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle(/PlySense/);
@@ -829,10 +844,10 @@ test('My Patterns explains verified cached mistakes and opens the original move'
   // Seed the browser analysis cache exactly as a completed depth-10 scan
   // followed by a verified depth-16 recheck would. No Stockfish work is
   // triggered from My Patterns itself.
-  await page.evaluate(async () => {
-    const archived = JSON.parse(localStorage.getItem('openfile-chess-games-v1') ?? '[]')[0];
-    const before = archived.game.initialFen as string;
-    const after = archived.game.moveHistory[0].fen as string;
+  const archivedForCache = await savedGamesFromIndexedDb(page);
+  await page.evaluate(async archived => {
+    const before = archived[0].game.initialFen as string;
+    const after = archived[0].game.moveHistory[0].fen as string;
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open('plyforge-analysis-cache-v1', 1);
       request.onupgradeneeded = () => {
@@ -858,7 +873,7 @@ test('My Patterns explains verified cached mistakes and opens the original move'
         tx.onerror = () => reject(tx.error);
       };
     });
-  });
+  }, archivedForCache);
 
   await page.getByRole('button', { name: 'My Patterns' }).click();
   await expect(page).toHaveURL(/\?insights=1/);
@@ -993,8 +1008,8 @@ test('two imported games link verified patterns to Decision Lab and survive relo
 
   // Seed an exact versioned local cache snapshot, as completed verified
   // Stockfish analysis would. The dashboard does not run Stockfish itself.
-  await page.evaluate(async () => {
-    const archived = JSON.parse(localStorage.getItem('openfile-chess-games-v1') ?? '[]');
+  const archivedForCacheB = await savedGamesFromIndexedDb(page);
+  await page.evaluate(async archived => {
     const first = archived[0].game;
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open('plyforge-analysis-cache-v1', 1);
@@ -1025,7 +1040,7 @@ test('two imported games link verified patterns to Decision Lab and survive relo
         tx.onerror = () => reject(tx.error);
       };
     });
-  });
+  }, archivedForCacheB);
 
   await page.getByRole('button', { name: 'My Patterns' }).click();
   const report = page.getByRole('region', { name: 'Missed free material' });

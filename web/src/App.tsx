@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { api } from './api';
-import { archiveGame, downloadPgn, readArchive, removeArchivedGame,
-  writeArchive, type ArchivedGame } from './archive';
-import { addPgnSelections, type PgnSelection } from './pgnImport';
+import { downloadPgn, type ArchivedGame } from './archive';
+import { type PgnSelection } from './pgnImport';
+import { deleteLibraryGame, exportGameLibraryBackup, importLibraryPgn, loadGameLibrary,
+  restoreGameLibraryBackup, saveGameSnapshot, type RestoreSummary } from './gameLibrary';
 import type { PgnImportCommit } from './PgnImportPanel';
 import { SavedGamesPage } from './SavedGamesPage';
 import { DecisionLabPage } from './DecisionLabPage';
@@ -276,7 +277,8 @@ export default function App() {
   const [analyzedGameCounts, setAnalyzedGameCounts] = useState<Map<PatternKind, number>>(new Map());
   const [archivedGame, setArchivedGame] = useState<GameState | null>(null);
   const [reviewReturn, setReviewReturn] = useState<'game' | 'games' | 'insights'>('game');
-  const [savedGames, setSavedGames] = useState<ArchivedGame[]>(() => readArchive());
+  const [savedGames, setSavedGames] = useState<ArchivedGame[]>([]);
+  const [libraryReady, setLibraryReady] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [initialReviewError, setInitialReviewError] = useState<string | null>(null);
   const reviewController = useRef<AbortController | null>(null);
@@ -332,7 +334,8 @@ export default function App() {
     if (!onLab) return;
     const controller = new AbortController();
     setAnalyzedGameCounts(new Map());
-    void loadPatternReport(readArchive(), controller.signal).then(report => {
+    if (!libraryReady) return;
+    void loadPatternReport(savedGames, controller.signal).then(report => {
       if (controller.signal.aborted) return;
       setAnalyzedGameCounts(new Map(report.groups.map(group => [group.kind, group.games])));
       const evidence = report.groups.flatMap(group => group.evidence);
@@ -350,7 +353,7 @@ export default function App() {
       // An unavailable analysis cache is not a training failure.
     });
     return () => controller.abort();
-  }, [onLab]);
+  }, [onLab, libraryReady, savedGames]);
 
   function returnFromLab() {
     window.history.replaceState({}, '', window.location.pathname);
@@ -430,9 +433,8 @@ export default function App() {
   }
 
   function openInsightReview(gameId: string, ply: number) {
-    const stored = readArchive().find(entry => entry.id === gameId);
+    const stored = savedGames.find(entry => entry.id === gameId);
     if (stored) {
-      setSavedGames(readArchive());
       openSavedReview(stored, ply);
       setReviewReturn('insights');
     } else {
@@ -462,27 +464,54 @@ export default function App() {
     if (!game) void newGame(true, 2);
   }
 
-  function importPgnGames(choices: PgnSelection[]): PgnImportCommit {
-    // Read the authoritative browser snapshot, not possibly stale UI state.
-    const current = readArchive();
-    const outcome = addPgnSelections(current, choices);
-    const saved = outcome.imported === 0 || writeArchive(outcome.games);
-    if (saved && outcome.imported > 0) {
-      setSavedGames(outcome.games);
-      setArchiveError(null);
-    } else if (!saved) {
-      setArchiveError('Could not save imported games. Browser storage may be blocked or full.');
-    }
-    return { ...outcome, saved };
-  }
-
-  function deleteSavedGame(id: string) {
-    const result = removeArchivedGame(id);
-    if (result.saved) {
+  async function importPgnGames(choices: PgnSelection[]): Promise<PgnImportCommit> {
+    try {
+      const result = await importLibraryPgn(choices);
       setSavedGames(result.games);
       setArchiveError(null);
-    } else {
-      setArchiveError('Could not remove this game. Browser storage may be blocked.');
+      return { ...result, saved: true };
+    } catch (caught) {
+      setArchiveError(caught instanceof Error ? caught.message : 'Could not save imported games.');
+      return { games: savedGames, saved: false, imported: 0,
+        duplicates: 0, full: 0, collisions: 0 };
+    }
+  }
+
+  async function deleteSavedGame(id: string): Promise<void> {
+    try {
+      setSavedGames(await deleteLibraryGame(id));
+      setArchiveError(null);
+    } catch (caught) {
+      setArchiveError(caught instanceof Error ? caught.message : 'Could not remove this game.');
+    }
+  }
+
+  async function downloadLibraryBackup(): Promise<void> {
+    const text = await exportGameLibraryBackup();
+    const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = 'plysense-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(href), 1000);
+  }
+
+  async function restoreLibrary(text: string): Promise<RestoreSummary> {
+    try {
+      const result = await restoreGameLibraryBackup(text);
+      setSavedGames(result.games);
+      setPracticeCards(readPracticeCards());
+      setArchiveError(null);
+      return result;
+    } catch (caught) {
+      // A partial restore may have committed valid game records. Reflect them.
+      try { setSavedGames(await loadGameLibrary()); } catch { /* Keep last known view. */ }
+      const message = caught instanceof Error ? caught.message : 'Could not restore backup.';
+      setArchiveError(message);
+      throw new Error(message);
     }
   }
 
@@ -588,48 +617,66 @@ export default function App() {
   }
 
   useEffect(() => {
-    // Auto-save full game snapshots on every server-confirmed state update.
-    // The browser snapshot remains reviewable after Render discards the session.
-    if (!game || (game.moveHistory.length === 0 && game.status === 'IN_PROGRESS')) return;
-    try {
-      const { games, saved } = archiveGame(game);
-      if (saved) {
+    // Do not save until the legacy archive migration has committed. Library
+    // writes are serialized with imports/deletions, preventing lost updates.
+    if (!libraryReady || !game ||
+        (game.moveHistory.length === 0 && game.status === 'IN_PROGRESS')) return;
+    let active = true;
+    void saveGameSnapshot(game).then(games => {
+      if (active) {
         setSavedGames(games);
         setArchiveError(null);
-      } else {
-        setArchiveError('Browser storage is full or unavailable. Download PGN to keep a copy.');
       }
-    } catch {
-      setArchiveError('Browser storage is unavailable. Download PGN to keep a copy.');
-    }
-  }, [game]);
+    }).catch(caught => {
+      if (active) setArchiveError(caught instanceof Error ? caught.message :
+        'Could not save this game to IndexedDB. Download its PGN for safekeeping.');
+    });
+    return () => { active = false; };
+  }, [game, libraryReady]);
 
   useEffect(() => {
-    if (mounted.current) return;
+    // React StrictMode replays effects in development. Let the second pass
+    // own the async library load, but never start two initial server games.
+    const firstPass = !mounted.current;
     mounted.current = true;
+    let active = true;
     const params = new URLSearchParams(window.location.search);
-    if (params.has('games') || params.has('lab') || params.has('insights')) return;
     const gameId = params.get('review');
-    if (!gameId) {
+    // Start a playable game without blocking on local library initialization.
+    if (firstPass && !gameId && !params.has('games') && !params.has('lab') && !params.has('insights')) {
       void newGame(true, 2);
-      return;
     }
-    const local = readArchive().find(item => item.id === gameId);
-    if (local) {
-      setArchivedGame(local.game);
-      setReviewReturn('games');
-      setReviewPly(0);
-      return;
-    }
-    setBusy(true);
-    void api.get(gameId).then(response => {
-      setGame(response);
-      setPlayAsWhite(response.humanWhite);
-      setDifficulty(response.depth);
-      setReviewPly(0);
+    void loadGameLibrary().then(items => {
+      if (!active) return;
+      setSavedGames(items);
+      setLibraryReady(true);
+      if (!gameId) return;
+      const local = items.find(item => item.id === gameId);
+      if (local) {
+        setArchivedGame(local.game);
+        setReviewReturn('games');
+        setReviewPly(0);
+        return;
+      }
+      setBusy(true);
+      void api.get(gameId).then(response => {
+        if (!active) return;
+        setGame(response);
+        setPlayAsWhite(response.humanWhite);
+        setDifficulty(response.depth);
+        setReviewPly(0);
+      }).catch(caught => {
+        if (active) setInitialReviewError(caught instanceof Error ?
+          caught.message : 'Game could not be loaded.');
+      }).finally(() => { if (active) setBusy(false); });
     }).catch(caught => {
-      setInitialReviewError(caught instanceof Error ? caught.message : 'Game could not be loaded.');
-    }).finally(() => setBusy(false));
+      if (active) {
+        setArchiveError(caught instanceof Error ? caught.message :
+          'IndexedDB is unavailable. Your legacy game data has not been deleted.');
+        setInitialReviewError('Saved game library could not be opened.');
+      }
+    });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -678,7 +725,7 @@ export default function App() {
       }
       setOnReview(true);
       setReviewPly(0);
-      const saved = readArchive().find(item => item.id === gameId);
+      const saved = savedGames.find(item => item.id === gameId);
       if (saved) {
         setArchivedGame(saved.game);
         setReviewReturn('games');
@@ -698,7 +745,7 @@ export default function App() {
     }
     window.addEventListener('popstate', handleNavigation);
     return () => window.removeEventListener('popstate', handleNavigation);
-  }, [game?.id]);
+  }, [game?.id, savedGames]);
 
   useEffect(() => {
     // Keep history scrolling inside its own panel. scrollIntoView on a child
@@ -869,7 +916,8 @@ export default function App() {
       ) : onGames ? (
         <SavedGamesPage games={savedGames} onReview={openSavedReview}
           onDelete={deleteSavedGame} onBack={returnFromGames} onImport={importPgnGames}
-          error={archiveError} />
+          onBackup={downloadLibraryBackup} onRestore={restoreLibrary}
+          ready={libraryReady} error={archiveError} />
       ) : onReview ? (
         activeReviewGame ? <GameReviewPage game={activeReviewGame}
           ply={reviewPly ?? activeReviewGame.moveHistory.length}

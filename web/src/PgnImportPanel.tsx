@@ -13,7 +13,7 @@ function chooseSide(parsed: ParsedPgn, playerName: string): boolean {
 }
 
 export function PgnImportPanel({ onImport }: {
-  onImport: (choices: PgnSelection[]) => PgnImportCommit;
+  onImport: (choices: PgnSelection[]) => Promise<PgnImportCommit>;
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
@@ -72,26 +72,32 @@ export function PgnImportPanel({ onImport }: {
     }
   }
 
-  function importSelected() {
+  async function importSelected() {
+    if (loading) return;
     const selections: PgnSelection[] = previews.flatMap((parsed, index) =>
       included[index] ? [{ parsed, humanWhite: sides[index] }] : []);
     if (!selections.length) return;
-    const outcome = onImport(selections);
-    if (!outcome.saved) {
-      setMessage('Nothing was saved. Browser storage may be blocked or full. Export or remove old games and try again.');
-      return;
+    setLoading(true);
+    try {
+      const outcome = await onImport(selections);
+      if (!outcome.saved) {
+        setMessage('Nothing was saved. IndexedDB may be blocked or full. Export or remove old games and try again.');
+        return;
+      }
+      const counts = [
+        outcome.imported + ' imported',
+        outcome.duplicates + ' already saved',
+        outcome.full + ' skipped (2,000-game library limit)',
+        outcome.collisions + ' skipped (ID conflict)',
+      ];
+      setMessage(counts.join(' · ') + '.');
+      setPreviews([]);
+      setErrors([]);
+      setSides([]);
+      setIncluded([]);
+    } finally {
+      setLoading(false);
     }
-    const counts = [
-      outcome.imported + ' imported',
-      outcome.duplicates + ' already saved',
-      outcome.full + ' skipped (50-game archive limit)',
-      outcome.collisions + ' skipped (ID conflict)',
-    ];
-    setMessage(counts.join(' · ') + '.');
-    setPreviews([]);
-    setErrors([]);
-    setSides([]);
-    setIncluded([]);
   }
 
   return (
@@ -170,7 +176,7 @@ export function PgnImportPanel({ onImport }: {
                 ))}
               </div>
               <button type="button" className="btn-primary pgn-import-commit"
-                disabled={!included.some(Boolean)} onClick={importSelected}>
+                disabled={loading || !included.some(Boolean)} onClick={() => void importSelected()}>
                 Import {included.filter(Boolean).length} selected game{included.filter(Boolean).length === 1 ? '' : 's'}
               </button>
             </section>

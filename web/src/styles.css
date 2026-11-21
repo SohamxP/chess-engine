@@ -630,3 +630,24 @@ button:focus-visible, a:focus-visible {
   .lab-progress-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lab-progress-stats > div { padding: 12px; }
 }
+
+
+/* v1.0 local library: explicit portable backups and bounded archive rendering. */
+.library-tools { display: flex; flex-wrap: wrap; gap: 12px 22px; align-items: center;
+  justify-content: space-between; margin: 16px 0; }
+.library-tools > div:first-child { flex: 1 1 320px; }
+.library-tools h2 { margin: 0 0 5px; font-size: 17px; }
+.library-tools p { color: #637466; font-size: 12px; line-height: 1.6; margin: 0; }
+.library-tools-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.library-restore-label { display: inline-flex; flex-direction: column; gap: 6px;
+  padding: 9px 12px; border: 1px solid #a9bdb0; border-radius: 6px;
+  color: #375d41; font-size: 12px; font-weight: 650; }
+.library-restore-label input { font-size: 11px; max-width: 225px; }
+.library-tools .library-message { width: 100%; color: #315d3e; font-weight: 650; }
+.library-tools .review-license { width: 100%; }
+.library-show-more { display: block; margin: 22px auto 35px; }
+@media (max-width: 600px) {
+  .library-tools { align-items: stretch; }
+  .library-tools-actions { flex-direction: column; align-items: stretch; width: 100%; }
+  .library-restore-label input { max-width: 100%; }
+}
