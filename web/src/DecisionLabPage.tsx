@@ -18,6 +18,7 @@ interface Attempt {
   saved: boolean;
   tracked: boolean;
   previousPlan: string;
+  objectiveMate: boolean;
 }
 
 const pieceName: Record<string, string> = {
@@ -112,6 +113,26 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error, anal
         to: card.originalUci.slice(2, 4),
         ...(card.originalUci.length === 5 ? { promotion: card.originalUci[4] } : {}),
       });
+      // Mate-in-one is a board-level fact. Do not require noisy mate/cp
+      // Stockfish comparisons to mark a successfully solved mate exercise.
+      if (card.patterns?.includes('missed-mate-one')) {
+        const winningMove = new Chess(card.fen).moves({ verbose: true }).find(candidate => {
+          const probe = new Chess(card.fen);
+          probe.move(candidate);
+          return probe.isCheckmate();
+        });
+        if (winningMove) {
+          const success = position.isCheckmate();
+          const tracked = Date.parse(card.dueAt) <= Date.now();
+          const saved = tracked ? onRecord(card.id, success, plan) : false;
+          setAttempt({
+            fen: position.fen(), san: move.san, uci, grade: success ? 'Best' : 'Mistake',
+            lossCp: null, originalLossCp: null, bestSan: winningMove.san,
+            success, saved, tracked, previousPlan: card.lastPlan, objectiveMate: true,
+          });
+          return;
+        }
+      }
       // Evaluate all three positions at identical settings in one local worker.
       const [before, candidate, previous] = await analyzePositions(
         [card.fen, position.fen(), original.fen()], abort.signal,
@@ -135,7 +156,7 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error, anal
         grade: played.grade, lossCp: played.lossCp,
         originalLossCp: old.lossCp,
         bestSan: before.bestMove ? uciToSan(card.fen, before.bestMove) : null,
-        success, saved, tracked, previousPlan: card.lastPlan,
+        success, saved, tracked, previousPlan: card.lastPlan, objectiveMate: false,
       });
     } catch (caught) {
       if (!abort.signal.aborted) {
@@ -336,7 +357,9 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error, anal
                 <div className="lab-verdict">
                   <strong>{attempt.san}</strong>
                   <span>{attempt.success === null ? 'Not rated'
-                    : attempt.success ? 'Solid alternative at this depth' : 'Worth revisiting'}</span>
+                    : attempt.objectiveMate
+                      ? attempt.success ? 'Checkmate found' : 'Mate in one missed'
+                      : attempt.success ? 'Solid alternative at this depth' : 'Worth revisiting'}</span>
                 </div>
                 <div className="lab-comparison">
                   <div><span>Your new move</span><strong>{attempt.lossCp === null ? '—' : (attempt.lossCp / 100).toFixed(2) + ' pawns lost'}</strong></div>
@@ -349,6 +372,8 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error, anal
                   {attempt.previousPlan && <p>Last time: {attempt.previousPlan}</p>}
                 </div>
                 {attempt.uci === card.originalUci && <p>You repeated the move you originally played. Try identifying a different idea when this position returns.</p>}
+                {attempt.objectiveMate && <p>This mate-in-one attempt was checked from legal
+                  board moves. No approximate engine score was needed.</p>}
                 {attempt.success === null
                   ? <p>Analysis could not score this reliably, so the practice schedule was not changed.</p>
                   : <p>{attempt.success
