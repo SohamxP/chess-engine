@@ -935,3 +935,35 @@ test('Adaptive Decision Lab prioritizes repeated verified weaknesses and persist
   expect(await page.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
+
+
+test('Mate-in-one Decision Lab exercises are objectively scored without Stockfish', async ({ page }) => {
+  await page.evaluate(() => {
+    const old = '2020-01-01T00:00:00.000Z';
+    localStorage.setItem('plyforge-decision-lab-v1', JSON.stringify([{
+      id: 'mate:4', gameId: 'mate', ply: 4,
+      fen: 'rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq g3 0 2',
+      white: false, originalUci: 'b8c6', originalSan: 'Nc6',
+      addedAt: old, dueAt: old, streak: 0, attempts: 0,
+      lastPlan: '', lastSuccess: null, patterns: ['missed-mate-one'],
+    }]));
+  });
+  await page.goto('/?lab=1');
+  const board = page.getByRole('group', { name: 'Decision Lab chess board' });
+  await expect(page.getByRole('region', { name: 'Practice position' }))
+    .toContainText('Missed mate in one');
+  await board.getByRole('button', { name: /^d8 black queen/ }).click();
+  await board.getByRole('button', { name: /^h4 empty, legal destination/ }).click();
+  const feedback = page.getByRole('region', { name: 'Decision feedback' });
+  await expect(feedback).toContainText('Checkmate found');
+  await expect(feedback).toContainText('No approximate engine score was needed.');
+  await expect(feedback).toContainText('Qh4#');
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('plyforge-decision-lab-v1') ?? '[]')[0]);
+  expect(saved.attempts).toBe(1);
+  expect(saved.history).toHaveLength(1);
+  expect(saved.history[0].success).toBe(true);
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Training dashboard' }))
+    .toContainText('1/1 recorded successes');
+});
