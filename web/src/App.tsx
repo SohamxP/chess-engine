@@ -635,13 +635,15 @@ export default function App() {
   }, [game, libraryReady]);
 
   useEffect(() => {
-    if (mounted.current) return;
+    // React StrictMode replays effects in development. Let the second pass
+    // own the async library load, but never start two initial server games.
+    const firstPass = !mounted.current;
     mounted.current = true;
     let active = true;
     const params = new URLSearchParams(window.location.search);
     const gameId = params.get('review');
     // Start a playable game without blocking on local library initialization.
-    if (!gameId && !params.has('games') && !params.has('lab') && !params.has('insights')) {
+    if (firstPass && !gameId && !params.has('games') && !params.has('lab') && !params.has('insights')) {
       void newGame(true, 2);
     }
     void loadGameLibrary().then(items => {
