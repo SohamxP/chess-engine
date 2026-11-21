@@ -93,6 +93,52 @@ export async function readCachedEvaluation(
   });
 }
 
+/**
+ * Read a complete game's positions in one readonly transaction. The insights
+ * dashboard never starts Stockfish: it only displays analysis already done.
+ * Missing/corrupt scores are absent from the result map.
+ */
+export async function readCachedEvaluationBatch(
+  fens: string[], depths: number[],
+): Promise<Map<string, PositionEvaluation>> {
+  const result = new Map<string, PositionEvaluation>();
+  const missing = new Map<string, number>();
+  for (const fen of fens) {
+    for (const depth of depths) {
+      const key = evaluationCacheKey(fen, depth);
+      const value = memory.get(key);
+      if (cacheableEvaluation(value, depth)) result.set(key, value);
+      else missing.set(key, depth);
+    }
+  }
+  if (!missing.size) return result;
+  const db = await database();
+  if (!db) return result;
+  await new Promise<void>(resolve => {
+    try {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
+      for (const [key, depth] of missing.entries()) {
+        const req = store.get(key);
+        req.onsuccess = () => {
+          const value: unknown = (req.result as StoredEvaluation | undefined)?.evaluation;
+          if (cacheableEvaluation(value, depth)) {
+            result.set(key, value);
+            remember(key, value);
+          }
+        };
+        req.onerror = () => { /* One missing entry cannot block the report. */ };
+      }
+    } catch {
+      resolve();
+    }
+  });
+  return result;
+}
+
 /** IndexedDB persists between reloads; storage errors degrade to memory only. */
 export async function saveCachedEvaluation(
   fen: string, depth: number, evaluation: PositionEvaluation,
