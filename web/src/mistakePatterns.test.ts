@@ -44,7 +44,7 @@ describe('high-confidence mistake pattern detection', () => {
   it('detects an exposed queen only when the opponent has a free legal capture', () => {
     const fen = '4k3/8/8/8/8/4p3/8/K3Q3 w - - 0 1';
     const hanging = gameWithMove('exposed', fen, 'e1f2');
-    const evaluations = [evaluated(0, 16, 'e1e3'), evaluated(-410, 16, null)];
+    const evaluations = [evaluated(0, 16, 'e1e3'), evaluated(-410, 16, 'e3f2')];
     const result = inspectAnalyzedGame(hanging, evaluations);
     expect(result.evidence.map(e => e.kind)).toEqual(['exposed-major-piece']);
     expect(result.evidence[0].explanation).toContain('f2');
@@ -54,6 +54,9 @@ describe('high-confidence mistake pattern detection', () => {
     const defended = gameWithMove('defended',
       '4k3/8/8/8/8/4p3/8/4Q1K1 w - - 0 1', 'e1f2');
     expect(inspectAnalyzedGame(defended, evaluations).evidence).toEqual([]);
+    const withoutEngineConfirmation = [evaluations[0], evaluated(-410, 16, 'e8d7')];
+    expect(inspectAnalyzedGame(hanging, withoutEngineConfirmation).evidence).toEqual([]);
+
   });
 
   it('finds a missed forced mate in one even when mate and cp cannot be compared', () => {
