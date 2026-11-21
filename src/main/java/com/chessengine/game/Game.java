@@ -26,6 +26,16 @@ public class Game {
     private final Map<String, Integer> positionCounts = new HashMap<>();
     private GameStatus claimedDraw;
 
+    /** Legal moves and adjudication computed together, so search does not
+     * generate the exact same move list once for status and again for ordering. */
+    public record SearchPosition(GameStatus status, List<Move> legalMoves) { }
+
+    public SearchPosition inspectForSearch() {
+        if (claimedDraw != null) return new SearchPosition(claimedDraw, List.of());
+        List<Move> legalMoves = getAllLegalMoves();
+        return new SearchPosition(statusForMoves(legalMoves), legalMoves);
+    }
+
     public Game() {
         this.board = new Board();
         recordPosition();
@@ -117,7 +127,12 @@ public class Game {
      */
     public GameStatus getStatus() {
         if (claimedDraw != null) return claimedDraw;
-        if (getAllLegalMoves().isEmpty()) {
+        return statusForMoves(getAllLegalMoves());
+    }
+
+    /** Shares the same rules as the standard Game status API. */
+    private GameStatus statusForMoves(List<Move> legalMoves) {
+        if (legalMoves.isEmpty()) {
             return isInCheck() ? GameStatus.CHECKMATE : GameStatus.STALEMATE;
         }
         if (hasInsufficientMaterial()) return GameStatus.DRAW_INSUFFICIENT_MATERIAL;
