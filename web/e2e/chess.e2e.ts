@@ -967,3 +967,124 @@ test('Mate-in-one Decision Lab exercises are objectively scored without Stockfis
   await expect(page.getByRole('region', { name: 'Training dashboard' }))
     .toContainText('1/1 recorded successes');
 });
+
+
+test('two imported games link verified patterns to Decision Lab and survive reload', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: /My Games/ }).click();
+  await page.getByRole('button', { name: 'Import PGN' }).click();
+  await page.getByLabel('Your player name (optional)').fill('Soham');
+  const fen = '4k3/8/8/8/8/8/3q4/K2R4 w - - 0 1';
+  const game = (event: string, date: string) => `[Event "${event}"]
+[Date "${date}"]
+[White "Soham"]
+[Black "Opponent"]
+[SetUp "1"]
+[FEN "${fen}"]
+[Result "*"]
+
+1. Rb1 *`;
+  await page.getByLabel('Or paste PGN text').fill(
+    game('Pattern fixture A', '2026.11.19') + '\n\n' + game('Pattern fixture B', '2026.11.20'));
+  await page.getByRole('button', { name: 'Preview pasted games' }).click();
+  await page.getByRole('button', { name: 'Import 2 selected games' }).click();
+  await expect(page.locator('.archive-game-card')).toHaveCount(2);
+
+  // Seed an exact versioned local cache snapshot, as completed verified
+  // Stockfish analysis would. The dashboard does not run Stockfish itself.
+  await page.evaluate(async () => {
+    const archived = JSON.parse(localStorage.getItem('openfile-chess-games-v1') ?? '[]');
+    const first = archived[0].game;
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open('plyforge-analysis-cache-v1', 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('positions')) {
+          const store = db.createObjectStore('positions', { keyPath: 'key' });
+          store.createIndex('storedAt', 'storedAt');
+        }
+      };
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction('positions', 'readwrite');
+        for (const depth of [10, 16]) {
+          for (const [fen, cp, bestMove] of [
+            [first.initialFen, 180, 'd1d2'],
+            [first.moveHistory[0].fen, -180, null],
+          ] as [string, number, string | null][]) {
+            tx.objectStore('positions').put({
+              key: 'stockfish-19-lite-v2|hash8|depth' + depth + '|' + fen,
+              evaluation: { cp, mate: null, bestMove, depth },
+              storedAt: Date.now(),
+            });
+          }
+        }
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => reject(tx.error);
+      };
+    });
+  });
+
+  await page.getByRole('button', { name: 'My Patterns' }).click();
+  const report = page.getByRole('region', { name: 'Missed free material' });
+  await expect(report).toContainText('2 distinct games');
+  await expect(report.locator('.insights-evidence')).toHaveCount(2);
+  await report.getByRole('button', { name: 'Review position' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Game Review' })).toBeVisible();
+  const review = page.getByRole('region', { name: 'Engine evaluation' });
+  await review.getByRole('button', { name: 'Analyze game' }).click();
+  await expect(review.getByRole('status')).toHaveText('Analyzed 2 positions.', { timeout: 60_000 });
+  await page.getByRole('button', { name: 'Add 1 decision to Decision Lab' }).click();
+  await expect(page.getByRole('heading', { name: 'Decision Lab' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Practice position' }))
+    .toContainText('Missed free material');
+  await expect(page.getByText('Priority practice: this theme appears in multiple saved games.'))
+    .toBeVisible();
+
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('plyforge-decision-lab-v1') ?? '[]'));
+  expect(saved).toHaveLength(1);
+  expect(saved[0].patterns).toEqual(['missed-free-capture']);
+  expect(saved[0].streak).toBe(0);
+  expect(saved[0].history).toBeUndefined();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Decision Lab' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Practice position' }))
+    .toContainText('Missed free material');
+  expect(await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth))
+    .toBeLessThanOrEqual(1);
+});
+
+test('corrupted archive entries are isolated, leaving the valid library navigable', async ({ page }) => {
+  await page.evaluate(() => {
+    const valid = {
+      id: 'valid-archive', savedAt: '2026-11-20T11:00:00.000Z',
+      game: {
+        id: 'valid-archive',
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        initialFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        status: 'IMPORTED_UNFINISHED', humanWhite: true, moveHistory: [],
+        whiteToMove: true, inCheck: false, depth: 0, aiTurn: false,
+        canUndo: false, canClaimThreefold: false, canClaimFifty: false,
+        legalMoves: [], lastMove: null, aiStats: null,
+      },
+    };
+    localStorage.setItem('openfile-chess-games-v1', JSON.stringify([
+      { ...valid, id: 'broken', game: { ...valid.game, id: 'broken',
+        moveHistory: [{ ply: 1, white: true, ai: false,
+          uci: 'not-a-move', san: 'e4', fen: 'not a FEN' }] } },
+      valid,
+    ]));
+  });
+  await page.reload();
+  await page.getByRole('button', { name: /My Games/ }).click();
+  await expect(page.locator('.archive-game-card')).toHaveCount(1);
+  await page.getByRole('button', { name: 'My Patterns' }).click();
+  await expect(page.getByRole('heading', { name: 'Personal Mistake Patterns' }))
+    .toBeVisible();
+  await expect(page.getByRole('region', { name: 'Pattern analysis coverage' }))
+    .toContainText('0 / 1');
+});
