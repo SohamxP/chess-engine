@@ -4,23 +4,38 @@
 
 PlySense is a full-stack chess game plus a private, spaced-recall training system built from *your own games*. Its focus is the thinking process: you can write down your plan, try a different legal move, compare that decision to your original move with local Stockfish analysis, and return when the position is due. No account, LLM API, or paid analysis service required.
 
-**[Try PlySense](https://openfile-chess.onrender.com/)** · [Read the Decision Lab guide](#decision-lab--learn-from-your-own-decisions)
+**[Try PlySense](https://openfile-chess.onrender.com/)** · [Architecture diagram](docs/architecture/README.md) · [v1.0 release notes](docs/release/v1.0.md) · [Demo walkthrough](docs/demo/README.md)
 
 ### How it works
 
 ```text
 Java chess engine (Java 25 + Spring Boot)
-      -> React 19 game board + FIDE move history
-      -> browser-local saved games
-      -> Stockfish 19 Lite Web Worker analyzes historical positions
-      -> human mistakes become Decision Lab cards
-      -> blind legal move + written plan
-      -> compare new move vs. original vs. engine suggestion
-      -> spaced review: 1 / 3 / 7 / 14 / 30 days
+      -> React 19 chessboard + FIDE move notation
+      -> IndexedDB game library (up to 2,000) + portable JSON backups
+      -> local Stockfish 19 Lite analyzes imported games
+      -> rule-backed My Patterns finds recurring errors across games
+      -> Decision Lab: blind legal move + written plan
+      -> adaptive spaced recall + progress with sample sizes
 ```
 
-**Engineering:** custom Java engine with legal moves, negamax/alpha-beta, iterative deepening, quiescence and transposition caching; React/TypeScript UI; Spring Boot REST; chess.js for legal offline practice and SAN formatting; Stockfish WASM in a disposable browser worker; localStorage archives; Java, Vitest and real-browser Playwright tests; Dockerized deployment to Render.
+**Engineering:** custom Java engine with legal moves, negamax/alpha-beta, iterative deepening, quiescence and transposition caching; React/TypeScript UI; Spring Boot REST; chess.js for legal offline practice and SAN formatting; Stockfish WASM in a disposable browser worker; IndexedDB game archives and JSON backups; Java, Vitest and real-browser Playwright tests; Dockerized deployment to Render.
 
+
+## PlySense v1.0
+
+The v1.0 release combines a custom Java chess engine with explainable
+cross-game mistake analysis, adaptive local training, and safe browser-local
+storage. All release claims are tied to the source code and automated tests.
+
+- **[System architecture and engineering tradeoffs](docs/architecture/README.md)**
+- **[Release notes, limitations and measured benchmarks](docs/release/v1.0.md)**
+- **[Reproducible product and technical demo](docs/demo/README.md)**
+- **[Game-library migration and portable backup](docs/storage/README.md)**
+
+A fixed-position, seven-run depth-2 CI comparison observed
+**24–29% lower median search latency** after reusing legal move generation,
+with identical search results. This is a bounded experiment, not a general
+claim about all devices or playing strength.
 
 ## Engine correctness and reproducible benchmarks
 
@@ -257,10 +272,14 @@ en-passant captures and promotions are handled without false capture counts.
 
 ## Saved Games (browser-only) & PGN
 
+[Versioned IndexedDB migration, safe backup/restore, 2,000-game cap and data-integrity tests](docs/storage/README.md).
+
+
 As the free Render web service sleeps and its in-memory game sessions disappear,
 PlySense now automatically saves game states containing moves (and finished
-zero-move games) into the **same browser's local storage**. Open **My Games** to
-see the latest 50 snapshots, their last update, result, difficulty, and moves.
+zero-move games) into the browser's **IndexedDB game library**. Open **My Games** to
+review up to 2,000 stored games (rendered in paginated batches), including
+last update, result, difficulty, and moves.
 
 Saved snapshots are **review-only**: opening one does not resume a game on the
 Java server. Even after Render restarts or expires the game ID, you can review
@@ -270,8 +289,10 @@ not require the original server session to exist.
 
 Each saved game and the dedicated Review screen can **Download PGN**, containing
 standard SAN move text, players, result, date, and initial FEN for custom
-starting positions. A PGN file is the portable backup. Local browser storage
-does not synchronize across devices, can be disabled or cleared, and is not a
+starting positions. Use **Download library backup** for a complete versioned JSON
+file containing games, training progress and durable cached evaluations;
+**Restore JSON backup** adds missing records without overwriting existing ones.
+Local browser storage does not synchronize across devices, can be disabled or cleared, and is not a
 substitute for a future server-side database. When storage fails, the app warns
 rather than promising the match was saved.
 
@@ -376,9 +397,9 @@ A missing label does not mean no mistakes were made.
 For privacy and performance, the dashboard reads the **existing versioned
 IndexedDB Stockfish cache in read-only batches**, rather than running new
 engine analysis, uploading positions, or duplicating analysis data. Clearing
-browser data removes the underlying games/evaluations. The current archive
-still holds a maximum of 50 saved games; a future storage migration will
-support longitudinal studies on larger archives.
+browser data removes the underlying games/evaluations. The IndexedDB game
+library holds up to 2,000 saved games; PGN parsing still previews a maximum
+of 50 games per batch.
 
 ## Import games from other chess platforms (PGN)
 
