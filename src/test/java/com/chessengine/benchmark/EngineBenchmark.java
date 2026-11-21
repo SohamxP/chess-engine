@@ -33,6 +33,7 @@ public final class EngineBenchmark {
 
     private record Position(String label, String fen) { }
     private record Sample(long nanos, long allocatedBytes, SearchResult result) { }
+    private enum Strategy { WITHOUT_PRUNING, ENHANCED_REPEATED, ENHANCED_REUSE }
 
     private EngineBenchmark() { }
 
@@ -61,19 +62,23 @@ public final class EngineBenchmark {
             String original = root.getSearchKey();
 
             for (int i = 0; i < warmup; i++) {
-                sample(ai, root, depth, false, allocated);
-                sample(ai, root, depth, true, allocated);
+                sample(ai, root, depth, Strategy.WITHOUT_PRUNING, allocated);
+                sample(ai, root, depth, Strategy.ENHANCED_REPEATED, allocated);
+                sample(ai, root, depth, Strategy.ENHANCED_REUSE, allocated);
             }
             List<Sample> baseline = new ArrayList<>();
+            List<Sample> repeated = new ArrayList<>();
             List<Sample> enhanced = new ArrayList<>();
             for (int i = 0; i < runs; i++) {
                 // Alternate order to avoid consistently favoring the warm cache.
                 if (i % 2 == 0) {
-                    enhanced.add(sample(ai, root, depth, true, allocated));
-                    baseline.add(sample(ai, root, depth, false, allocated));
+                    enhanced.add(sample(ai, root, depth, Strategy.ENHANCED_REUSE, allocated));
+                    repeated.add(sample(ai, root, depth, Strategy.ENHANCED_REPEATED, allocated));
+                    baseline.add(sample(ai, root, depth, Strategy.WITHOUT_PRUNING, allocated));
                 } else {
-                    baseline.add(sample(ai, root, depth, false, allocated));
-                    enhanced.add(sample(ai, root, depth, true, allocated));
+                    baseline.add(sample(ai, root, depth, Strategy.WITHOUT_PRUNING, allocated));
+                    repeated.add(sample(ai, root, depth, Strategy.ENHANCED_REPEATED, allocated));
+                    enhanced.add(sample(ai, root, depth, Strategy.ENHANCED_REUSE, allocated));
                 }
             }
             if (!original.equals(root.getSearchKey())) {
@@ -83,15 +88,21 @@ public final class EngineBenchmark {
             // A pruning optimization should never change the exact minimax
             // score at the same depth and with the same evaluation.
             for (int i = 0; i < runs; i++) {
-                if (baseline.get(i).result().scoreCentipawns() !=
-                    enhanced.get(i).result().scoreCentipawns()) {
-                    throw new IllegalStateException("Baseline/enhanced score disagree on " +
+                SearchResult reference = repeated.get(i).result();
+                SearchResult optimized = enhanced.get(i).result();
+                if (baseline.get(i).result().scoreCentipawns() != optimized.scoreCentipawns() ||
+                    reference.scoreCentipawns() != optimized.scoreCentipawns() ||
+                    !java.util.Objects.equals(reference.bestMove(), optimized.bestMove()) ||
+                    reference.nodesVisited() != optimized.nodesVisited() ||
+                    reference.alphaBetaCutoffs() != optimized.alphaBetaCutoffs() ||
+                    reference.transpositionHits() != optimized.transpositionHits()) {
+                    throw new IllegalStateException("Search parity failed on " +
                         position.label() + " at depth " + depth +
-                        ": baseline=" + baseline.get(i).result().scoreCentipawns() +
-                        " enhanced=" + enhanced.get(i).result().scoreCentipawns());
+                        " (reference=" + reference + ", optimized=" + optimized + ")");
                 }
             }
             print(position.label(), "without-pruning", depth, baseline);
+            print(position.label(), "alpha-beta-tt-repeated", depth, repeated);
             print(position.label(), "alpha-beta-tt", depth, enhanced);
         }
     }
@@ -129,12 +140,16 @@ public final class EngineBenchmark {
     }
 
     private static Sample sample(
-        ChessAI ai, Game game, int depth, boolean optimized,
+        ChessAI ai, Game game, int depth, Strategy strategy,
         java.util.function.LongSupplier allocated
     ) {
         long beforeAllocated = allocated.getAsLong();
         long started = System.nanoTime();
-        SearchResult result = optimized ? ai.search(game, depth) : ai.searchWithoutPruning(game, depth);
+        SearchResult result = switch (strategy) {
+            case WITHOUT_PRUNING -> ai.searchWithoutPruning(game, depth);
+            case ENHANCED_REPEATED -> ai.searchWithRepeatedMoveGeneration(game, depth);
+            case ENHANCED_REUSE -> ai.search(game, depth);
+        };
         long elapsed = System.nanoTime() - started;
         long afterAllocated = allocated.getAsLong();
 
