@@ -295,6 +295,41 @@ The system deliberately does not show the engine's answer before a user commits 
 
 
 
+## Adaptive Decision Lab and training progress
+
+When an analyzed game reveals one of the objectively verified patterns in
+**My Patterns**, new Decision Lab cards are tagged with that evidence. Opening
+Decision Lab also reconciles **existing** cards against locally cached pattern
+reports. This leaves their due dates, recall streaks, written plans, and
+lifetime attempt counters intact. Unverified guesses are not turned into tags.
+
+Scheduling is **deterministic, not a learned model**. A card without verified
+tags uses the original 1/3/7/14/30-day successful-recall intervals. When a
+tagged weakness recurs across **two or more distinct saved games**, successes
+shorten its next interval (75% of the base schedule for two games; 60% for
+three or more, rounded to a minimum of one day). A miss resets the streak and
+returns the decision tomorrow. Among decisions already due, prior failures
+take priority, followed by weaknesses found in several distinct games. The
+scheduler never brings future-due cards forward or counts early practice
+toward a streak.
+
+The **Training progress** section reports recorded attempts, attempts and
+successful outcomes in the past 30 days, distinct positions practiced, and
+exercise accuracy for each verified theme. The counts are based on actual
+successful/unsuccessful practice events—not inferred game ratings or fabricated
+training effectiveness. Each card stores up to 40 detailed attempts to avoid
+unbounded browser-local storage growth, while keeping its total lifetime
+attempts counter. Historical cards created before this upgrade are still
+available with their streaks and due dates, but earlier individual outcomes
+cannot be reconstructed and therefore are excluded from the new dashboard.
+
+All data remains in the existing browser-local Decision Lab key
+(`plyforge-decision-lab-v1`) for backward compatibility. No new account,
+analytics service, cloud backend, or remote engine requests are involved.
+**An improved exercise success rate does not establish improved chess
+performance**; comparing actual future game outcomes will require a separate
+longitudinal study with sufficient sample sizes.
+
 ## Personal Mistake Patterns — evidence across games
 
 **My Patterns** (`?insights=1`) groups repeatable tactical evidence across saved games,
