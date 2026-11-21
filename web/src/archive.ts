@@ -1,3 +1,4 @@
+import { Chess } from 'chess.js';
 import { resultScore, startingFen, type GameState } from './chess';
 
 // Preserve the legacy key so the branding change cannot delete existing game histories.
@@ -43,23 +44,32 @@ function validSource(value: unknown): value is PgnSource {
       .every(key => typeof source[key as keyof PgnSource] === 'string');
 }
 
+/** Reject broken persisted snapshots before they reach review or pattern detection. */
+function validFen(fen: unknown): fen is string {
+  if (typeof fen !== 'string') return false;
+  try { new Chess(fen); return true; } catch { return false; }
+}
+
 function validArchive(value: unknown): value is ArchivedGame {
   if (!value || typeof value !== 'object') return false;
   const item = value as Partial<ArchivedGame>;
   const game = item.game;
   return typeof item.id === 'string' && item.id.length > 0 &&
-    typeof item.savedAt === 'string' &&
+    typeof item.savedAt === 'string' && Number.isFinite(Date.parse(item.savedAt)) &&
     !!game && typeof game === 'object' &&
     game.id === item.id &&
     (item.source === undefined || validSource(item.source)) &&
-    typeof game.fen === 'string' &&
-    typeof game.initialFen === 'string' &&
+    validFen(game.fen) &&
+    validFen(game.initialFen) &&
     typeof game.status === 'string' &&
     typeof game.humanWhite === 'boolean' &&
     Array.isArray(game.moveHistory) &&
-    game.moveHistory.every(move => !!move && typeof move.ply === 'number' &&
-      typeof move.san === 'string' && typeof move.uci === 'string' &&
-      typeof move.fen === 'string');
+    game.moveHistory.every((move, index) => !!move && move.ply === index + 1 &&
+      typeof move.white === 'boolean' && typeof move.ai === 'boolean' &&
+      typeof move.san === 'string' && move.san.length > 0 &&
+      typeof move.uci === 'string' &&
+      /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(move.uci) &&
+      validFen(move.fen));
 }
 
 export function readArchive(storage?: Pick<Storage, 'getItem'>): ArchivedGame[] {
@@ -69,9 +79,15 @@ export function readArchive(storage?: Pick<Storage, 'getItem'>): ArchivedGame[] 
     if (!raw) return [];
     const result: unknown = JSON.parse(raw);
     if (!Array.isArray(result)) return [];
+    const ids = new Set<string>();
     return result.filter(validArchive)
       .sort((a, b) => b.savedAt.localeCompare(a.savedAt))
-      .slice(0, MAX_ARCHIVED_GAMES);
+      .filter(item => {
+        // Take the newest valid copy, not the first stale duplicate.
+        if (ids.has(item.id)) return false;
+        ids.add(item.id);
+        return true;
+      }).slice(0, MAX_ARCHIVED_GAMES);
   } catch {
     return [];
   }
