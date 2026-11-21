@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chess } from 'chess.js';
 import { analyzePositions, REVIEW_DEPTH } from './analysis';
 import { glyphs, isLightSquare, parseFen, squareOrder } from './chess';
-import { duePracticeCards, type PracticeCard } from './practice';
+import { duePracticeCards, recurringThemeCounts, trainingProgress, type PracticeCard } from './practice';
+import { PATTERN_CATALOG } from './mistakePatterns';
 import { gradeMove, uciToSan } from './review';
 
 interface Attempt {
@@ -54,6 +55,8 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
   const controller = useRef<AbortController | null>(null);
 
   const due = duePracticeCards(cards);
+  const insights = useMemo(() => trainingProgress(cards), [cards]);
+  const recurring = useMemo(() => recurringThemeCounts(cards), [cards]);
   const card = activeId === null ? due[0] : cards.find(item => item.id === activeId);
   const nextDue = due.find(item => item.id !== card?.id);
   const chess = useMemo(() => card ? new Chess(card.fen) : null, [card?.fen]);
@@ -199,6 +202,45 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
         <strong>A private training notebook, not an engine guessing contest</strong>
         <p>The best move stays hidden until you commit to a legal move. Comparing moves runs Stockfish locally at depth {REVIEW_DEPTH}; scores are estimates, not definitive judgments. Practice notes and review dates stay in this browser.</p>
       </div>
+      <section className="panel lab-dashboard" aria-label="Training dashboard">
+        <div className="panel-heading"><h2>Training progress</h2>
+          <span className="lab-eyebrow">Recorded practice, not chess rating</span></div>
+        <div className="lab-progress-stats">
+          <div><strong>{insights.totalAttempts}</strong><span>Recorded attempts</span></div>
+          <div><strong>{insights.last30Days}</strong><span>Last 30 days</span></div>
+          <div><strong>{insights.last30Days
+            ? Math.round(insights.correctLast30Days / insights.last30Days * 100) + '%'
+            : '—'}</strong>
+            <span>Last 30 days success · {insights.correctLast30Days}/{insights.last30Days}</span></div>
+          <div><strong>{insights.practicedPositions}</strong><span>Positions practiced since update</span></div>
+        </div>
+        <div className="lab-pattern-progress">
+          <h3>Practice by detected pattern</h3>
+          {insights.themes.filter(theme => theme.cards > 0 || theme.attempts > 0).length === 0 ? (
+            <p className="review-description">No verified tactical patterns are attached yet.
+              Analyze your saved games and open My Patterns to see which classifications are supported.</p>
+          ) : (
+            insights.themes.filter(theme => theme.cards > 0 || theme.attempts > 0).map(theme => (
+              <div className="lab-pattern-row" key={theme.kind}>
+                <div>
+                  <strong>{PATTERN_CATALOG[theme.kind].title}</strong>
+                  <span>{theme.cards} positions · {theme.games} games</span>
+                </div>
+                <div>
+                  <strong>{theme.attempts
+                    ? Math.round(theme.successes / theme.attempts * 100) + '%'
+                    : '—'}</strong>
+                  <span>{theme.successes}/{theme.attempts} recorded successes</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <p className="review-description">Only due, reliably scored attempts completed since this
+          update appear in these figures. Older total attempts and streaks are preserved, but their
+          historical outcomes cannot be reconstructed. This measures exercise performance,
+          not improvement in actual game results.</p>
+      </section>
       {!card ? (
         <section className="panel lab-empty">
           <h2>{cards.length ? 'You are caught up.' : 'Your practice deck is empty.'}</h2>
@@ -214,6 +256,11 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
               <span className="lab-eyebrow">Decision · Move {decisionLabel(card)}</span>
               <strong>{card.white ? 'White' : 'Black'} to move</strong>
               <span>What would you play differently?</span>
+              {(card.patterns?.length ?? 0) > 0 && <div className="lab-tags">
+                {card.patterns?.map(kind => <span key={kind}>{PATTERN_CATALOG[kind].title}</span>)}
+              </div>}
+              {(card.patterns ?? []).some(kind => (recurring.get(kind) ?? 0) >= 2) &&
+                <small className="lab-priority-note">Priority practice: this theme appears in multiple saved games.</small>}
             </div>
             <div className="board-frame">
               <div className="board" role="group" aria-label="Decision Lab chess board" data-testid="decision-lab-board">
@@ -303,8 +350,8 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
                 {attempt.success === null
                   ? <p>Analysis could not score this reliably, so the practice schedule was not changed.</p>
                   : <p>{attempt.success
-                    ? 'You found a move close to the engine recommendation. This position will return after a longer interval as your recall streak grows.'
-                    : 'The engine sees a stronger continuation. Review your plan and try to recognize the idea when this position returns.'}</p>}
+                    ? 'You found a move close to the engine recommendation. The next review depends on your recall streak and whether this verified theme recurs across games.'
+                    : 'The engine sees a stronger continuation. This decision returns tomorrow; repeated misses also increase its practice priority.'}</p>}
                 {attempt.success !== null && !attempt.tracked &&
                   <p>This was early practice. It did not change your recall streak or review date.</p>}
                 {attempt.success !== null && attempt.tracked && !attempt.saved &&
@@ -329,6 +376,9 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
                 <div>
                   <strong>Move {decisionLabel(item)} · {item.white ? 'White' : 'Black'}</strong>
                   <span>{Date.parse(item.dueAt) <= Date.now() ? 'Due now' : 'Due ' + dueLabel(item.dueAt)} · {item.attempts} attempts · {item.streak} recalls</span>
+                  {(item.patterns?.length ?? 0) > 0 && <span className="lab-library-patterns">
+                    {item.patterns?.map(kind => PATTERN_CATALOG[kind].title).join(' · ')}
+                  </span>
                 </div>
                 <div className="lab-library-actions">
                   <button type="button" className="btn-secondary" onClick={() => focusCard(item.id)}>Practice</button>
