@@ -303,6 +303,10 @@ Decision Lab also reconciles **existing** cards against locally cached pattern
 reports. This leaves their due dates, recall streaks, written plans, and
 lifetime attempt counters intact. Unverified guesses are not turned into tags.
 
+A missed-mate-in-one card is checked directly against legal checkmate on
+the board when the player attempts it, rather than requiring unreliable
+mate-versus-centipawn comparisons or another Stockfish search.
+
 Scheduling is **deterministic, not a learned model**. A card without verified
 tags uses the original 1/3/7/14/30-day successful-recall intervals. When a
 tagged weakness recurs across **two or more distinct saved games**, successes
@@ -313,7 +317,7 @@ take priority, followed by weaknesses found in several distinct games. The
 scheduler never brings future-due cards forward or counts early practice
 toward a streak.
 
-The **Training progress** section reports recorded attempts, attempts and
+The **Training progress** section reports retained recorded attempts, attempts and
 successful outcomes in the past 30 days, distinct positions practiced, and
 exercise accuracy for each verified theme. The counts are based on actual
 successful/unsuccessful practice events—not inferred game ratings or fabricated
