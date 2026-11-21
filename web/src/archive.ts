@@ -80,12 +80,14 @@ export function readArchive(storage?: Pick<Storage, 'getItem'>): ArchivedGame[] 
     const result: unknown = JSON.parse(raw);
     if (!Array.isArray(result)) return [];
     const ids = new Set<string>();
-    return result.filter((item): item is ArchivedGame => {
-      if (!validArchive(item) || ids.has(item.id)) return false;
-      ids.add(item.id);
-      return true;
-    }).sort((a, b) => b.savedAt.localeCompare(a.savedAt))
-      .slice(0, MAX_ARCHIVED_GAMES);
+    return result.filter(validArchive)
+      .sort((a, b) => b.savedAt.localeCompare(a.savedAt))
+      .filter(item => {
+        // Take the newest valid copy, not the first stale duplicate.
+        if (ids.has(item.id)) return false;
+        ids.add(item.id);
+        return true;
+      }).slice(0, MAX_ARCHIVED_GAMES);
   } catch {
     return [];
   }
