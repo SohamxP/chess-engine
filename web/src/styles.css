@@ -531,3 +531,75 @@ button:focus-visible, a:focus-visible {
   .pgn-import-heading button { width: 100%; }
   .pgn-import-commit { width: 100%; }
 }
+
+
+/* My Patterns: evidence-first insights, with honest coverage states. */
+.insights-page { max-width: 1040px; }
+.insights-heading { align-items: flex-end; gap: 20px; }
+.insights-heading h1 { margin-bottom: 6px; }
+.insights-heading p { max-width: 620px; }
+.insights-actions { display: flex; gap: 10px; flex-shrink: 0; }
+.insights-section-heading, .insights-pattern-heading {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;
+}
+.insights-section-heading h2, .insights-pattern-heading h2 { margin: 0 0 7px; font-size: 18px; }
+.insights-section-heading p, .insights-pattern-heading p {
+  color: #677a6d; font-size: 13px; line-height: 1.5; margin: 0;
+}
+.insights-working { color: #44684b; font-size: 12px; white-space: nowrap; }
+.insights-coverage { margin-bottom: 20px; }
+.insights-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px; margin: 23px 0 14px; }
+.insights-stats > div { background: #f7faf5; border: 1px solid #e0e8dd;
+  border-radius: 7px; padding: 15px 12px; display: flex; flex-direction: column; gap: 7px; }
+.insights-stats strong { color: #304d37; font-size: 21px; font-weight: 730; }
+.insights-stats span { color: #67756b; font-size: 11px; line-height: 1.4; }
+.insights-coverage-progress { width: 100%; height: 9px; accent-color: #648869; }
+.insights-note { font-size: 12px; color: #69786d; line-height: 1.6; margin: 12px 0 0; }
+.insights-empty { padding: 25px; }
+.insights-empty h2 { margin: 0 0 8px; font-size: 19px; }
+.insights-empty p { color: #68786d; font-size: 13px; line-height: 1.6; }
+.insights-catalog { display: grid; gap: 17px; }
+.insights-pattern { padding: 23px; }
+.insights-pattern-count { display: flex; flex-direction: column; gap: 5px;
+  text-align: right; color: #45664c; min-width: 86px; }
+.insights-pattern-count strong { font-size: 23px; }
+.insights-pattern-count span { font-size: 11px; color: #718075; }
+.insights-practice { background: #eef4eb; border: 1px solid #dae7d5; border-radius: 6px;
+  padding: 11px 13px; font-size: 12px; color: #3d6448; line-height: 1.55; margin: 16px 0; }
+.insights-evidence-list { display: flex; flex-direction: column; }
+.insights-evidence { display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; padding: 15px 0; border-bottom: 1px solid #e8ede5; }
+.insights-evidence:last-child { border-bottom: none; }
+.insights-evidence-details { display: flex; flex-direction: column; min-width: 0; gap: 5px; }
+.insights-evidence-details strong { font-size: 14px; color: #304637; }
+.insights-evidence-details span { color: #758276; font-size: 11px; overflow-wrap: anywhere; }
+.insights-evidence-details p { margin: 0; font-size: 12px; line-height: 1.55; }
+.insights-evidence-details small { color: #637466; font-size: 11px; line-height: 1.5; }
+.insights-evidence button { flex-shrink: 0; }
+.insights-more { margin-top: 14px; }
+.insights-method { margin: 26px 2px 10px; color: #58665b; }
+.insights-method h2 { font-size: 15px; color: #3b5541; margin-bottom: 7px; }
+.insights-method p { font-size: 12px; line-height: 1.65; margin: 8px 0; }
+@media (max-width: 850px) {
+  .insights-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .insights-heading { align-items: flex-start; flex-wrap: wrap; }
+  .topbar-inner { gap: 9px 12px; }
+}
+@media (max-width: 600px) {
+  .insights-stats { gap: 9px; }
+  .insights-stats > div { padding: 12px 9px; }
+  .insights-stats strong { font-size: 19px; }
+  .insights-section-heading { flex-direction: column; gap: 8px; }
+  .insights-pattern-heading { gap: 10px; }
+  .insights-pattern { padding: 17px; }
+  .insights-evidence { flex-direction: column; align-items: stretch; gap: 10px; }
+  .insights-evidence button { align-self: flex-start; }
+  .insights-pattern-count strong { font-size: 21px; }
+  .insights-actions { width: 100%; }
+  .insights-actions button { flex: 1; }
+}
+@media (max-width: 410px) {
+  .topbar-games { margin-left: 0; padding: 7px 9px; font-size: 11px; }
+  .source-link { margin-left: auto; }
+}
