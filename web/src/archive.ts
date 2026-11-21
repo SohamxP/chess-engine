@@ -50,7 +50,7 @@ function validFen(fen: unknown): fen is string {
   try { new Chess(fen); return true; } catch { return false; }
 }
 
-function validArchive(value: unknown): value is ArchivedGame {
+export function validArchive(value: unknown): value is ArchivedGame {
   if (!value || typeof value !== 'object') return false;
   const item = value as Partial<ArchivedGame>;
   const game = item.game;
