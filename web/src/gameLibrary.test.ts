@@ -77,9 +77,13 @@ describe('portable game library backup integrity', () => {
   it('permits a larger library without changing legacy 50-game import defaults', () => {
     const source = { kind: 'pgn' as const, white: 'A', black: 'B', event: 'E',
       site: 'S', date: 'D', round: 'R' };
-    const make = (id: string): ParsedPgn => ({ source, game: game(id) });
-    const choices = Array.from({ length: 3 }, (_, i) => ({
-      parsed: make('new-' + i), humanWhite: true,
+    const make = (id: string, uci: string): ParsedPgn => ({ source, game: {
+      ...game(id),
+      moveHistory: [{ ply: 1, white: true, ai: false, uci,
+        san: 'e4', fen: startingFen }],
+    } });
+    const choices = ['e2e4', 'd2d4', 'g1f3'].map((uci, i) => ({
+      parsed: make('new-' + i, uci), humanWhite: true,
     }));
     const existing = Array.from({ length: 50 }, (_, i) => archived('existing-' + i));
     const legacy = addPgnSelections(existing, choices);
