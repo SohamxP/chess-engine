@@ -21,7 +21,7 @@ export const PATTERN_CATALOG: Record<PatternKind, {
   },
   'exposed-major-piece': {
     title: 'Exposed major piece',
-    description: 'A rook or queen was moved to a square where a cheaper attacker could capture it without an immediate recapture.',
+    description: 'A rook or queen was moved into a free capture that Stockfish preferred as the opponent’s next move.',
     practice: 'Before moving a rook or queen, check every legal enemy capture on its destination.',
   },
 };
@@ -163,7 +163,11 @@ function detectForMove(
   if (['q', 'r'].includes(actual.piece)) {
     const capturable = playedBoard.moves({ verbose: true })
       .filter(moveOption => moveOption.to === actual.to && !!moveOption.captured &&
-        pieceValue(moveOption.piece) < pieceValue(actual.piece))
+        pieceValue(moveOption.piece) < pieceValue(actual.piece) &&
+        // Demand that Stockfish actually prefers the capture, rather than
+        // blaming an unrelated evaluation loss on a merely possible threat.
+        (moveOption.from + moveOption.to + (moveOption.promotion ?? '')) ===
+          after.bestMove?.toLowerCase())
       .some(moveOption => {
         const response = new Chess(playedBoard.fen());
         const captured = playUci(response, moveOption.from + moveOption.to +
@@ -175,7 +179,7 @@ function detectForMove(
       kind: 'exposed-major-piece', lossCp: reviewed.lossCp, betterSan: best.san,
       explanation: (actual.piece === 'q' ? 'The queen' : 'The rook') +
         ' on ' + actual.to +
-        ' could be legally captured by a lower-value piece without an immediate recapture.',
+        ' was available to a lower-value attacker as the engine\'s best reply, without an immediate recapture.',
     });
   }
   return found;
