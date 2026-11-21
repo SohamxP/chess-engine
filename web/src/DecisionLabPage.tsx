@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chess } from 'chess.js';
 import { analyzePositions, REVIEW_DEPTH } from './analysis';
 import { glyphs, isLightSquare, parseFen, squareOrder } from './chess';
-import { duePracticeCards, type PracticeCard } from './practice';
+import { duePracticeCards, recurringThemeCounts, trainingProgress, type PracticeCard } from './practice';
+import { PATTERN_CATALOG, type PatternKind } from './mistakePatterns';
 import { gradeMove, uciToSan } from './review';
 
 interface Attempt {
@@ -17,6 +18,7 @@ interface Attempt {
   saved: boolean;
   tracked: boolean;
   previousPlan: string;
+  objectiveMate: boolean;
 }
 
 const pieceName: Record<string, string> = {
@@ -35,12 +37,13 @@ function dueLabel(iso: string): string {
     next.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
+export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error, analyzedGameCounts }: {
   cards: PracticeCard[];
   onRecord: (id: string, success: boolean, plan: string) => boolean;
   onDelete: (id: string) => void;
   onBack: () => void;
   error: string | null;
+  analyzedGameCounts?: Map<PatternKind, number>;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -53,7 +56,10 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
 
-  const due = duePracticeCards(cards);
+  const due = duePracticeCards(cards, new Date(), analyzedGameCounts);
+  const insights = useMemo(() => trainingProgress(cards), [cards]);
+  const recurring = useMemo(() => recurringThemeCounts(cards, analyzedGameCounts),
+    [cards, analyzedGameCounts]);
   const card = activeId === null ? due[0] : cards.find(item => item.id === activeId);
   const nextDue = due.find(item => item.id !== card?.id);
   const chess = useMemo(() => card ? new Chess(card.fen) : null, [card?.fen]);
@@ -107,6 +113,26 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
         to: card.originalUci.slice(2, 4),
         ...(card.originalUci.length === 5 ? { promotion: card.originalUci[4] } : {}),
       });
+      // Mate-in-one is a board-level fact. Do not require noisy mate/cp
+      // Stockfish comparisons to mark a successfully solved mate exercise.
+      if (card.patterns?.includes('missed-mate-one')) {
+        const winningMove = new Chess(card.fen).moves({ verbose: true }).find(candidate => {
+          const probe = new Chess(card.fen);
+          probe.move(candidate);
+          return probe.isCheckmate();
+        });
+        if (winningMove) {
+          const success = position.isCheckmate();
+          const tracked = Date.parse(card.dueAt) <= Date.now();
+          const saved = tracked ? onRecord(card.id, success, plan) : false;
+          setAttempt({
+            fen: position.fen(), san: move.san, uci, grade: success ? 'Best' : 'Mistake',
+            lossCp: null, originalLossCp: null, bestSan: winningMove.san,
+            success, saved, tracked, previousPlan: card.lastPlan, objectiveMate: true,
+          });
+          return;
+        }
+      }
       // Evaluate all three positions at identical settings in one local worker.
       const [before, candidate, previous] = await analyzePositions(
         [card.fen, position.fen(), original.fen()], abort.signal,
@@ -130,7 +156,7 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
         grade: played.grade, lossCp: played.lossCp,
         originalLossCp: old.lossCp,
         bestSan: before.bestMove ? uciToSan(card.fen, before.bestMove) : null,
-        success, saved, tracked, previousPlan: card.lastPlan,
+        success, saved, tracked, previousPlan: card.lastPlan, objectiveMate: false,
       });
     } catch (caught) {
       if (!abort.signal.aborted) {
@@ -199,6 +225,45 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
         <strong>A private training notebook, not an engine guessing contest</strong>
         <p>The best move stays hidden until you commit to a legal move. Comparing moves runs Stockfish locally at depth {REVIEW_DEPTH}; scores are estimates, not definitive judgments. Practice notes and review dates stay in this browser.</p>
       </div>
+      <section className="panel lab-dashboard" aria-label="Training dashboard">
+        <div className="panel-heading"><h2>Training progress</h2>
+          <span className="lab-eyebrow">Recorded practice, not chess rating</span></div>
+        <div className="lab-progress-stats">
+          <div><strong>{insights.totalAttempts}</strong><span>Recorded attempts</span></div>
+          <div><strong>{insights.last30Days}</strong><span>Last 30 days</span></div>
+          <div><strong>{insights.last30Days
+            ? Math.round(insights.correctLast30Days / insights.last30Days * 100) + '%'
+            : '—'}</strong>
+            <span>Last 30 days success · {insights.correctLast30Days}/{insights.last30Days}</span></div>
+          <div><strong>{insights.practicedPositions}</strong><span>Positions practiced since update</span></div>
+        </div>
+        <div className="lab-pattern-progress">
+          <h3>Practice by detected pattern</h3>
+          {insights.themes.filter(theme => theme.cards > 0 || theme.attempts > 0).length === 0 ? (
+            <p className="review-description">No verified tactical patterns are attached yet.
+              Analyze your saved games and open My Patterns to see which classifications are supported.</p>
+          ) : (
+            insights.themes.filter(theme => theme.cards > 0 || theme.attempts > 0).map(theme => (
+              <div className="lab-pattern-row" key={theme.kind}>
+                <div>
+                  <strong>{PATTERN_CATALOG[theme.kind].title}</strong>
+                  <span>{theme.cards} positions · {theme.games} games</span>
+                </div>
+                <div>
+                  <strong>{theme.attempts
+                    ? Math.round(theme.successes / theme.attempts * 100) + '%'
+                    : '—'}</strong>
+                  <span>{theme.successes}/{theme.attempts} recorded successes</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <p className="review-description">Only due, reliably scored attempts completed since this
+          update appear in these figures. Older total attempts and streaks are preserved, but their
+          historical outcomes cannot be reconstructed. This measures exercise performance,
+          not improvement in actual game results.</p>
+      </section>
       {!card ? (
         <section className="panel lab-empty">
           <h2>{cards.length ? 'You are caught up.' : 'Your practice deck is empty.'}</h2>
@@ -214,6 +279,11 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
               <span className="lab-eyebrow">Decision · Move {decisionLabel(card)}</span>
               <strong>{card.white ? 'White' : 'Black'} to move</strong>
               <span>What would you play differently?</span>
+              {(card.patterns?.length ?? 0) > 0 && <div className="lab-tags">
+                {card.patterns?.map(kind => <span key={kind}>{PATTERN_CATALOG[kind].title}</span>)}
+              </div>}
+              {(card.patterns ?? []).some(kind => (recurring.get(kind) ?? 0) >= 2) &&
+                <small className="lab-priority-note">Priority practice: this theme appears in multiple saved games.</small>}
             </div>
             <div className="board-frame">
               <div className="board" role="group" aria-label="Decision Lab chess board" data-testid="decision-lab-board">
@@ -287,12 +357,15 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
                 <div className="lab-verdict">
                   <strong>{attempt.san}</strong>
                   <span>{attempt.success === null ? 'Not rated'
-                    : attempt.success ? 'Solid alternative at this depth' : 'Worth revisiting'}</span>
+                    : attempt.objectiveMate
+                      ? attempt.success ? 'Checkmate found' : 'Mate in one missed'
+                      : attempt.success ? 'Solid alternative at this depth' : 'Worth revisiting'}</span>
                 </div>
                 <div className="lab-comparison">
                   <div><span>Your new move</span><strong>{attempt.lossCp === null ? '—' : (attempt.lossCp / 100).toFixed(2) + ' pawns lost'}</strong></div>
                   <div><span>Your original move ({card.originalSan})</span><strong>{attempt.originalLossCp === null ? '—' : (attempt.originalLossCp / 100).toFixed(2) + ' pawns lost'}</strong></div>
-                  <div><span>Engine suggestion</span><strong>{attempt.bestSan ?? 'Unavailable'}</strong></div>
+                  <div><span>{attempt.objectiveMate ? 'Legal checkmate' : 'Engine suggestion'}</span>
+                    <strong>{attempt.bestSan ?? 'Unavailable'}</strong></div>
                 </div>
                 <div className="lab-reflection">
                   <strong>Compare your reasoning</strong>
@@ -300,11 +373,17 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
                   {attempt.previousPlan && <p>Last time: {attempt.previousPlan}</p>}
                 </div>
                 {attempt.uci === card.originalUci && <p>You repeated the move you originally played. Try identifying a different idea when this position returns.</p>}
+                {attempt.objectiveMate && <p>This mate-in-one attempt was checked from legal
+                  board moves. No approximate engine score was needed.</p>}
                 {attempt.success === null
                   ? <p>Analysis could not score this reliably, so the practice schedule was not changed.</p>
-                  : <p>{attempt.success
-                    ? 'You found a move close to the engine recommendation. This position will return after a longer interval as your recall streak grows.'
-                    : 'The engine sees a stronger continuation. Review your plan and try to recognize the idea when this position returns.'}</p>}
+                  : <p>{attempt.objectiveMate
+                    ? attempt.success
+                      ? 'You found a legal checkmate. It will return according to your recall streak and this theme\'s recurrence.'
+                      : 'You missed the immediate checkmate. This position will return tomorrow.'
+                    : attempt.success
+                      ? 'You found a move close to the engine recommendation. The next review depends on your recall streak and whether this verified theme recurs across games.'
+                      : 'The engine sees a stronger continuation. This decision returns tomorrow; repeated misses also increase its practice priority.'}</p>}
                 {attempt.success !== null && !attempt.tracked &&
                   <p>This was early practice. It did not change your recall streak or review date.</p>}
                 {attempt.success !== null && attempt.tracked && !attempt.saved &&
@@ -329,6 +408,9 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
                 <div>
                   <strong>Move {decisionLabel(item)} · {item.white ? 'White' : 'Black'}</strong>
                   <span>{Date.parse(item.dueAt) <= Date.now() ? 'Due now' : 'Due ' + dueLabel(item.dueAt)} · {item.attempts} attempts · {item.streak} recalls</span>
+                  {(item.patterns?.length ?? 0) > 0 && <span className="lab-library-patterns">
+                    {item.patterns?.map(kind => PATTERN_CATALOG[kind].title).join(' · ')}
+                  </span>}
                 </div>
                 <div className="lab-library-actions">
                   <button type="button" className="btn-secondary" onClick={() => focusCard(item.id)}>Practice</button>

@@ -890,3 +890,80 @@ test('My Patterns does not fabricate weaknesses from unanalysed saved games', as
   await page.getByRole('button', { name: 'Open My Games' }).click();
   await expect(page.getByRole('heading', { name: 'My Games' })).toBeVisible();
 });
+
+
+test('Adaptive Decision Lab prioritizes repeated verified weaknesses and persists honest progress', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => {
+    const old = '2020-01-01T00:00:00.000Z';
+    const recent = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    const base = (gameId: string, patterns?: string[]) => ({
+      id: gameId + ':1', gameId, ply: 1,
+      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      white: true, originalUci: 'e2e4', originalSan: 'e4',
+      addedAt: old, dueAt: old, streak: 0, attempts: 0,
+      lastPlan: '', lastSuccess: null,
+      ...(patterns ? { patterns } : {}),
+    });
+    localStorage.setItem('plyforge-decision-lab-v1', JSON.stringify([
+      { ...base('legacy'), attempts: 9 }, // Old attempts must not be invented as outcomes.
+      { ...base('g1', ['missed-free-capture']), history: [
+        { at: recent, success: false, intervalDays: 1,
+          patterns: ['missed-free-capture'] },
+      ], attempts: 1 },
+      { ...base('g2', ['missed-free-capture']), history: [
+        { at: recent, success: true, intervalDays: 2,
+          patterns: ['missed-free-capture'] },
+      ], attempts: 1 },
+    ]));
+  });
+  await page.goto('/?lab=1');
+  await expect(page.getByRole('heading', { name: 'Decision Lab' })).toBeVisible();
+  const dashboard = page.getByRole('region', { name: 'Training dashboard' });
+  await expect(dashboard).toContainText('Recorded attempts');
+  await expect(dashboard).toContainText('Last 30 days success');
+  await expect(dashboard).toContainText('50%');
+  await expect(dashboard).toContainText('1/2 recorded successes');
+  await expect(dashboard).toContainText('2 positions');
+  await expect(page.getByText('Priority practice: this theme appears in multiple saved games.'))
+    .toBeVisible();
+  await expect(page.getByRole('region', { name: 'Practice position' }))
+    .toContainText('Missed free material');
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Training dashboard' }))
+    .toContainText('1/2 recorded successes');
+  expect(await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+
+test('Mate-in-one Decision Lab exercises are objectively scored without Stockfish', async ({ page }) => {
+  await page.evaluate(() => {
+    const old = '2020-01-01T00:00:00.000Z';
+    localStorage.setItem('plyforge-decision-lab-v1', JSON.stringify([{
+      id: 'mate:4', gameId: 'mate', ply: 4,
+      fen: 'rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq g3 0 2',
+      white: false, originalUci: 'b8c6', originalSan: 'Nc6',
+      addedAt: old, dueAt: old, streak: 0, attempts: 0,
+      lastPlan: '', lastSuccess: null, patterns: ['missed-mate-one'],
+    }]));
+  });
+  await page.goto('/?lab=1');
+  const board = page.getByRole('group', { name: 'Decision Lab chess board' });
+  await expect(page.getByRole('region', { name: 'Practice position' }))
+    .toContainText('Missed mate in one');
+  await board.getByRole('button', { name: /^d8 black queen/ }).click();
+  await board.getByRole('button', { name: /^h4 empty, legal destination/ }).click();
+  const feedback = page.getByRole('region', { name: 'Decision feedback' });
+  await expect(feedback).toContainText('Checkmate found');
+  await expect(feedback).toContainText('No approximate engine score was needed.');
+  await expect(feedback).toContainText('Qh4#');
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('plyforge-decision-lab-v1') ?? '[]')[0]);
+  expect(saved.attempts).toBe(1);
+  expect(saved.history).toHaveLength(1);
+  expect(saved.history[0].success).toBe(true);
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Training dashboard' }))
+    .toContainText('1/1 recorded successes');
+});

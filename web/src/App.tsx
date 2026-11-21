@@ -6,10 +6,11 @@ import { addPgnSelections, type PgnSelection } from './pgnImport';
 import type { PgnImportCommit } from './PgnImportPanel';
 import { SavedGamesPage } from './SavedGamesPage';
 import { DecisionLabPage } from './DecisionLabPage';
+import { loadPatternReport, type PatternKind } from './mistakePatterns';
 import { MistakePatternsPage } from './MistakePatternsPage';
 import {
-  duePracticeCards, makePracticeCards, readPracticeCards, recordPracticeAttempt,
-  removePracticeCard, writePracticeCards, type PracticeCard,
+  attachPatternEvidence, duePracticeCards, makePracticeCards, readPracticeCards,
+  recordPracticeAttempt, removePracticeCard, writePracticeCards, type PracticeCard,
 } from './practice';
 import { analyzeGame } from './analysis';
 import { GameReviewPage, type ReviewState } from './GameReviewPage';
@@ -272,6 +273,7 @@ export default function App() {
     () => new URLSearchParams(window.location.search).has('insights'));
   const [practiceCards, setPracticeCards] = useState<PracticeCard[]>(() => readPracticeCards());
   const [practiceError, setPracticeError] = useState<string | null>(null);
+  const [analyzedGameCounts, setAnalyzedGameCounts] = useState<Map<PatternKind, number>>(new Map());
   const [archivedGame, setArchivedGame] = useState<GameState | null>(null);
   const [reviewReturn, setReviewReturn] = useState<'game' | 'games' | 'insights'>('game');
   const [savedGames, setSavedGames] = useState<ArchivedGame[]>(() => readArchive());
@@ -322,6 +324,34 @@ export default function App() {
     window.scrollTo(0, 0);
   }
 
+  // Reconcile legacy training cards with verified cross-game evidence from
+  // cached local analysis. Never change the user's streak, due date or notes.
+  // Reading storage after the async scan prevents overwriting an attempt made
+  // while the scan was running.
+  useEffect(() => {
+    if (!onLab) return;
+    const controller = new AbortController();
+    setAnalyzedGameCounts(new Map());
+    void loadPatternReport(readArchive(), controller.signal).then(report => {
+      if (controller.signal.aborted) return;
+      setAnalyzedGameCounts(new Map(report.groups.map(group => [group.kind, group.games])));
+      const evidence = report.groups.flatMap(group => group.evidence);
+      if (!evidence.length) return;
+      const current = readPracticeCards();
+      const tagged = attachPatternEvidence(current, evidence);
+      if (tagged.every((card, i) => card === current[i])) return;
+      if (writePracticeCards(tagged)) {
+        setPracticeCards(tagged);
+        setPracticeError(null);
+      } else {
+        setPracticeError('Could not save detected training patterns. Browser storage may be full.');
+      }
+    }).catch(() => {
+      // An unavailable analysis cache is not a training failure.
+    });
+    return () => controller.abort();
+  }, [onLab]);
+
   function returnFromLab() {
     window.history.replaceState({}, '', window.location.pathname);
     setOnLab(false);
@@ -330,7 +360,11 @@ export default function App() {
   }
 
   function recordLabAttempt(id: string, success: boolean, plan: string): boolean {
-    const next = recordPracticeAttempt(practiceCards, id, success, plan);
+    // Storage is authoritative: asynchronous pattern reconciliation may have
+    // updated card metadata since the previous React render.
+    const current = readPracticeCards();
+    const next = recordPracticeAttempt(current, id, success, plan, new Date(), analyzedGameCounts);
+    if (next.every((item, index) => item === current[index])) return false;
     const ok = writePracticeCards(next);
     if (ok) {
       setPracticeCards(next);
@@ -830,7 +864,8 @@ export default function App() {
           onLab={openLab} onBack={returnFromInsights} />
       ) : onLab ? (
         <DecisionLabPage cards={practiceCards} onRecord={recordLabAttempt}
-          onDelete={deletePractice} onBack={returnFromLab} error={practiceError} />
+          onDelete={deletePractice} onBack={returnFromLab}
+          analyzedGameCounts={analyzedGameCounts} error={practiceError} />
       ) : onGames ? (
         <SavedGamesPage games={savedGames} onReview={openSavedReview}
           onDelete={deleteSavedGame} onBack={returnFromGames} onImport={importPgnGames}

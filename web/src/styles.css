@@ -603,3 +603,30 @@ button:focus-visible, a:focus-visible {
   .topbar-games { margin-left: 0; padding: 7px 9px; font-size: 11px; }
   .source-link { margin-left: auto; }
 }
+
+
+/* Adaptive Decision Lab: review evidence and measured exercise outcomes. */
+.lab-dashboard { margin-bottom: 20px; }
+.lab-dashboard > .panel-heading { align-items: baseline; flex-wrap: wrap; gap: 10px; }
+.lab-progress-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px; margin: 16px 0 20px; }
+.lab-progress-stats > div { display: flex; flex-direction: column; gap: 7px;
+  border: 1px solid #e1e9df; border-radius: 6px; background: #f7faf6; padding: 14px; }
+.lab-progress-stats strong { color: #294c34; font-size: 22px; line-height: 1; }
+.lab-progress-stats span { color: #68786e; font-size: 11px; line-height: 1.5; }
+.lab-pattern-progress h3 { color: #385540; font-size: 14px; margin: 0 0 8px; }
+.lab-pattern-row { display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; padding: 11px 0; border-bottom: 1px solid #e7ece5; }
+.lab-pattern-row > div { display: flex; flex-direction: column; gap: 5px; }
+.lab-pattern-row > div:last-child { text-align: right; }
+.lab-pattern-row strong { color: #354f3d; font-size: 12px; }
+.lab-pattern-row span { color: #6c7b6f; font-size: 11px; }
+.lab-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.lab-tags span { display: inline-flex; padding: 4px 8px; border-radius: 4px;
+  background: #e9f0e6; color: #40654c; font-weight: 650; font-size: 11px; }
+.lab-priority-note { color: #4b7054; font-size: 11px; line-height: 1.5; }
+.lab-library-patterns { display: block; color: #466f50 !important; margin-top: 3px; }
+@media (max-width: 760px) {
+  .lab-progress-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lab-progress-stats > div { padding: 12px; }
+}
