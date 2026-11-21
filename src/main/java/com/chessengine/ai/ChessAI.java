@@ -32,26 +32,37 @@ public final class ChessAI {
 
     /** Uses all completed depths from one through {@code depth}. */
     public SearchResult search(Game game, int depth) {
-        return runSearch(game, depth, true);
+        return runSearch(game, depth, true, true);
     }
 
     /** Baseline: same evaluation and quiescence rules without alpha-beta or TT. */
     public SearchResult searchWithoutPruning(Game game, int depth) {
-        return runSearch(game, depth, false);
+        return runSearch(game, depth, false, true);
     }
 
-    private SearchResult runSearch(Game game, int depth, boolean enhanced) {
+    /**
+     * Diagnostic baseline: previous search method regenerated legal moves
+     * separately for terminal status and move ordering at every node.
+     * Used only by the A/B benchmark and score-equivalence tests.
+     */
+    public SearchResult searchWithRepeatedMoveGeneration(Game game, int depth) {
+        return runSearch(game, depth, true, false);
+    }
+
+    private SearchResult runSearch(Game game, int depth, boolean enhanced, boolean sharedMoves) {
         Objects.requireNonNull(game, "game");
         if (depth < 1) throw new IllegalArgumentException("Search depth must be >= 1");
         Game root = game.copy();
-        GameStatus status = root.getStatus();
+        Game.SearchPosition rootState = sharedMoves ? root.inspectForSearch() : null;
+        GameStatus status = sharedMoves ? rootState.status() : root.getStatus();
         if (status != GameStatus.IN_PROGRESS) {
             return new SearchResult(null, terminalScore(status, 0), depth, 1, 0, 0, 0);
         }
 
         SearchStats stats = new SearchStats();
         Map<String, Transposition> table = new HashMap<>();
-        List<Move> rootMoves = orderedMoves(root, null);
+        List<Move> rootMoves = orderedMoves(root, null,
+                sharedMoves ? rootState.legalMoves() : root.getAllLegalMoves());
         Move chosen = null;
         int chosenScore = -INFINITY;
         int firstDepth = enhanced ? 1 : depth;
@@ -63,7 +74,7 @@ public final class ChessAI {
             for (Move move : rootMoves) {
                 Game child = apply(root, move);
                 int score = -negamax(child, iteration - 1, -INFINITY,
-                        enhanced ? -alpha : INFINITY, 1, stats, table, enhanced);
+                        enhanced ? -alpha : INFINITY, 1, stats, table, enhanced, sharedMoves);
                 if (score > bestScore) {
                     bestScore = score;
                     bestMove = move;
@@ -78,12 +89,14 @@ public final class ChessAI {
     }
 
     private int negamax(Game position, int remaining, int alpha, int beta, int ply,
-                        SearchStats stats, Map<String, Transposition> table, boolean enhanced) {
+                        SearchStats stats, Map<String, Transposition> table,
+                        boolean enhanced, boolean sharedMoves) {
         if (remaining == 0) {
-            return quiescence(position, alpha, beta, ply, 0, stats, enhanced);
+            return quiescence(position, alpha, beta, ply, 0, stats, enhanced, sharedMoves);
         }
         stats.nodes++;
-        GameStatus status = position.getStatus();
+        Game.SearchPosition scan = sharedMoves ? position.inspectForSearch() : null;
+        GameStatus status = sharedMoves ? scan.status() : position.getStatus();
         if (status != GameStatus.IN_PROGRESS) return terminalScore(status, ply);
 
         int originalAlpha = alpha;
@@ -110,11 +123,12 @@ public final class ChessAI {
 
         int best = -INFINITY;
         Move bestMove = null;
-        for (Move move : orderedMoves(position, preferred)) {
+        for (Move move : orderedMoves(position, preferred,
+                sharedMoves ? scan.legalMoves() : position.getAllLegalMoves())) {
             int score = -negamax(apply(position, move), remaining - 1,
                     enhanced ? -beta : -INFINITY,
                     enhanced ? -alpha : INFINITY,
-                    ply + 1, stats, table, enhanced);
+                    ply + 1, stats, table, enhanced, sharedMoves);
             if (score > best) {
                 best = score;
                 bestMove = move;
@@ -139,10 +153,12 @@ public final class ChessAI {
     }
 
     private int quiescence(Game position, int alpha, int beta, int ply,
-                           int qPly, SearchStats stats, boolean enhanced) {
+                           int qPly, SearchStats stats, boolean enhanced,
+                           boolean sharedMoves) {
         stats.nodes++;
         stats.quiescenceNodes++;
-        GameStatus status = position.getStatus();
+        Game.SearchPosition scan = sharedMoves ? position.inspectForSearch() : null;
+        GameStatus status = sharedMoves ? scan.status() : position.getStatus();
         if (status != GameStatus.IN_PROGRESS) return terminalScore(status, ply);
 
         Board board = position.getBoard();
@@ -160,12 +176,13 @@ public final class ChessAI {
             alpha = Math.max(alpha, best);
         }
 
-        for (Move move : orderedMoves(position, null)) {
+        for (Move move : orderedMoves(position, null,
+                sharedMoves ? scan.legalMoves() : position.getAllLegalMoves())) {
             if (!inCheck && !isTactical(board, move)) continue;
             int score = -quiescence(apply(position, move),
                     enhanced ? -beta : -INFINITY,
                     enhanced ? -alpha : INFINITY,
-                    ply + 1, qPly + 1, stats, enhanced);
+                    ply + 1, qPly + 1, stats, enhanced, sharedMoves);
             best = Math.max(best, score);
             if (enhanced) {
                 alpha = Math.max(alpha, score);
@@ -196,9 +213,9 @@ public final class ChessAI {
         return status == GameStatus.CHECKMATE ? -MATE_SCORE + ply : 0;
     }
 
-    private List<Move> orderedMoves(Game position, Move preferred) {
+    private List<Move> orderedMoves(Game position, Move preferred, List<Move> legalMoves) {
         Board board = position.getBoard();
-        List<Move> moves = new ArrayList<>(position.getAllLegalMoves());
+        List<Move> moves = new ArrayList<>(legalMoves);
         moves.sort(Comparator.comparingInt((Move move) ->
                 (move.equals(preferred) ? 1_000_000 : 0) + priority(board, move)).reversed());
         return moves;
