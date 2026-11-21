@@ -280,6 +280,45 @@ cross-device synchronization are required. Clearing browser storage erases the t
 The system deliberately does not show the engine's answer before a user commits a move.
 
 
+
+## Personal Mistake Patterns — evidence across games
+
+**My Patterns** (`?insights=1`) groups repeatable tactical evidence across saved games,
+not just a list of Stockfish scores. Import PGNs or play games, open each game's **Review**
+and run **Analyze game**, then select **My Patterns** in the top navigation.
+
+The first version uses three narrowly verifiable categories:
+
+- **Missed mate in one:** the cached deeper engine move is legal checkmate, while
+  the move played did not checkmate. The actual board proves this; no invented
+  centipawn loss is attached to mate-vs-centipawn transitions.
+- **Missed free material:** a confirmed (depth-16 on both sides) mistake or
+  blunder where Stockfish preferred capturing an unprotected knight, bishop,
+  rook, or queen, with no legal immediate recapture.
+- **Exposed major piece:** a confirmed mistake or blunder after moving a rook
+  or queen into a legal capture by a cheaper opponent piece that Stockfish
+  selects as its best reply, with no legal immediate recapture.
+
+The material rules also require an estimated evaluation loss of **at least
+140 centipawns**. They inspect legal moves with `chess.js`, not SAN keywords.
+Each finding links back to the **exact move in Game Review** and includes
+the alternative SAN, evidence explanation, source game, and score when valid.
+The report distinguishes number of *occurrences* from number of *distinct
+games*: multiple examples in one game aren't a recurring cross-game trend.
+
+This feature deliberately **does not** label ambiguous concepts such as
+"bad strategy", "weak king safety", or "missed tactics" from evaluation loss
+alone. Coverage shows how many saved games had a complete depth-10 scan,
+how many decisions had usable grades, and how many still need verification.
+A missing label does not mean no mistakes were made.
+
+For privacy and performance, the dashboard reads the **existing versioned
+IndexedDB Stockfish cache in read-only batches**, rather than running new
+engine analysis, uploading positions, or duplicating analysis data. Clearing
+browser data removes the underlying games/evaluations. The current archive
+still holds a maximum of 50 saved games; a future storage migration will
+support longitudinal studies on larger archives.
+
 ## Import games from other chess platforms (PGN)
 
 PlySense does not require you to play chess here to improve. In **My Games → Import PGN**:

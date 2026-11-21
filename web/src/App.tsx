@@ -6,6 +6,7 @@ import { addPgnSelections, type PgnSelection } from './pgnImport';
 import type { PgnImportCommit } from './PgnImportPanel';
 import { SavedGamesPage } from './SavedGamesPage';
 import { DecisionLabPage } from './DecisionLabPage';
+import { MistakePatternsPage } from './MistakePatternsPage';
 import {
   duePracticeCards, makePracticeCards, readPracticeCards, recordPracticeAttempt,
   removePracticeCard, writePracticeCards, type PracticeCard,
@@ -267,10 +268,12 @@ export default function App() {
     () => new URLSearchParams(window.location.search).has('games'));
   const [onLab, setOnLab] = useState(
     () => new URLSearchParams(window.location.search).has('lab'));
+  const [onInsights, setOnInsights] = useState(
+    () => new URLSearchParams(window.location.search).has('insights'));
   const [practiceCards, setPracticeCards] = useState<PracticeCard[]>(() => readPracticeCards());
   const [practiceError, setPracticeError] = useState<string | null>(null);
   const [archivedGame, setArchivedGame] = useState<GameState | null>(null);
-  const [reviewReturn, setReviewReturn] = useState<'game' | 'games'>('game');
+  const [reviewReturn, setReviewReturn] = useState<'game' | 'games' | 'insights'>('game');
   const [savedGames, setSavedGames] = useState<ArchivedGame[]>(() => readArchive());
   const [archiveError, setArchiveError] = useState<string | null>(null);
   const [initialReviewError, setInitialReviewError] = useState<string | null>(null);
@@ -283,6 +286,7 @@ export default function App() {
     setReviewReturn('game');
     setOnGames(false);
     setOnLab(false);
+    setOnInsights(false);
     setReviewPly(Math.max(0, Math.min(game.moveHistory.length, ply)));
     setDismissedResult(game.id + ':' + game.status + ':' + game.moveHistory.length);
     if (!onReview) {
@@ -292,15 +296,16 @@ export default function App() {
     window.scrollTo(0, 0);
   }
 
-  function openSavedReview(item: ArchivedGame) {
+  function openSavedReview(item: ArchivedGame, ply = item.game.moveHistory.length) {
     clearReview();
     setArchivedGame(item.game);
     setReviewReturn('games');
-    setReviewPly(item.game.moveHistory.length);
+    setReviewPly(Math.max(0, Math.min(item.game.moveHistory.length, ply)));
     setInitialReviewError(null);
     window.history.pushState({}, '', '?review=' + encodeURIComponent(item.id));
     setOnGames(false);
     setOnLab(false);
+    setOnInsights(false);
     setOnReview(true);
     window.scrollTo(0, 0);
   }
@@ -312,6 +317,7 @@ export default function App() {
     window.history.pushState({}, '', '?lab=1');
     setOnGames(false);
     setOnReview(false);
+    setOnInsights(false);
     setOnLab(true);
     window.scrollTo(0, 0);
   }
@@ -365,16 +371,50 @@ export default function App() {
     window.history.pushState({}, '', '?games=1');
     setOnReview(false);
     setOnLab(false);
+    setOnInsights(false);
     setOnGames(true);
     window.scrollTo(0, 0);
   }
 
+  function openInsights() {
+    if (reviewController.current) stopReview();
+    setReviewPly(null);
+    setArchivedGame(null);
+    window.history.pushState({}, '', '?insights=1');
+    setOnReview(false);
+    setOnGames(false);
+    setOnLab(false);
+    setOnInsights(true);
+    window.scrollTo(0, 0);
+  }
+
+  function returnFromInsights() {
+    window.history.replaceState({}, '', window.location.pathname);
+    setOnInsights(false);
+    if (!game) void newGame(true, 2);
+    window.scrollTo(0, 0);
+  }
+
+  function openInsightReview(gameId: string, ply: number) {
+    const stored = readArchive().find(entry => entry.id === gameId);
+    if (stored) {
+      setSavedGames(readArchive());
+      openSavedReview(stored, ply);
+      setReviewReturn('insights');
+    } else {
+      openGames();
+    }
+  }
+
   function returnToGame() {
     if (reviewController.current) stopReview();
-    const backToGames = reviewReturn === 'games' || !game;
-    window.history.replaceState({}, '', backToGames ? '?games=1' : window.location.pathname);
+    const backToInsights = reviewReturn === 'insights';
+    const backToGames = !backToInsights && (reviewReturn === 'games' || !game);
+    window.history.replaceState({}, '',
+      backToInsights ? '?insights=1' : backToGames ? '?games=1' : window.location.pathname);
     setOnReview(false);
     setOnLab(false);
+    setOnInsights(backToInsights);
     setOnGames(backToGames);
     setArchivedGame(null);
     setReviewPly(null);
@@ -534,7 +574,7 @@ export default function App() {
     if (mounted.current) return;
     mounted.current = true;
     const params = new URLSearchParams(window.location.search);
-    if (params.has('games') || params.has('lab')) return;
+    if (params.has('games') || params.has('lab') || params.has('insights')) return;
     const gameId = params.get('review');
     if (!gameId) {
       void newGame(true, 2);
@@ -568,6 +608,16 @@ export default function App() {
         setReview(current => current?.running
           ? { ...current, running: false, error: 'Analysis stopped.' } : current);
       }
+      if (params.has('insights')) {
+        setOnInsights(true);
+        setOnLab(false);
+        setOnGames(false);
+        setOnReview(false);
+        setArchivedGame(null);
+        setReviewPly(null);
+        return;
+      }
+      setOnInsights(false);
       if (params.has('lab')) {
         setOnLab(true);
         setOnGames(false);
@@ -749,7 +799,7 @@ export default function App() {
     : 'Connecting to engine';
   const score = game ? resultScore(game) : null;
   const resultKey = game ? game.id + ':' + game.status + ':' + game.moveHistory.length : null;
-  const showResult = Boolean(score && !onReview && !onGames && !onLab && resultKey !== dismissedResult && !busy && !motion && reviewPly === null);
+  const showResult = Boolean(score && !onReview && !onGames && !onLab && !onInsights && resultKey !== dismissedResult && !busy && !motion && reviewPly === null);
   const humanSide = game?.humanWhite ? 'White' : 'Black';
   const dueCount = duePracticeCards(practiceCards).length;
 
@@ -763,6 +813,9 @@ export default function App() {
           <button type="button" className="topbar-games" onClick={openGames}>
             My Games {savedGames.length > 0 ? '(' + savedGames.length + ')' : ''}
           </button>
+          <button type="button" className="topbar-games" onClick={openInsights}>
+            My Patterns
+          </button>
           <button type="button" className="topbar-games" onClick={openLab}>
             Decision Lab {dueCount > 0 ? '(' + dueCount + ' due)' : ''}
           </button>
@@ -771,7 +824,11 @@ export default function App() {
         </div>
       </header>
 
-      {onLab ? (
+      {onInsights ? (
+        <MistakePatternsPage games={savedGames}
+          onReview={openInsightReview} onGames={openGames}
+          onLab={openLab} onBack={returnFromInsights} />
+      ) : onLab ? (
         <DecisionLabPage cards={practiceCards} onRecord={recordLabAttempt}
           onDelete={deletePractice} onBack={returnFromLab} error={practiceError} />
       ) : onGames ? (
