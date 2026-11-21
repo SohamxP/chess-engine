@@ -93,6 +93,15 @@ describe('local game archive', () => {
     // separate explicit save operation may replace persisted bytes.
   });
 
+  it('prefers the newest valid duplicate rather than stale browser ordering', () => {
+    const storage = new MemoryStorage();
+    const earlier = { id: 'g', savedAt: '2026-11-18T00:00:00Z', game: game('g') };
+    const later = { id: 'g', savedAt: '2026-11-20T00:00:00Z',
+      game: game('g', 'WHITE_RESIGNED') };
+    storage.setItem(ARCHIVE_KEY, JSON.stringify([earlier, later]));
+    expect(readArchive(storage)).toEqual([later]);
+  });
+
   it('exports legal SAN, player colors, result, and black-to-move custom FEN', () => {
     const match = game('last', 'CHECKMATE');
     match.whiteToMove = false;
