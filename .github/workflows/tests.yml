@@ -20,16 +20,23 @@ jobs:
           cache: maven
       - name: Run Java engine and REST API tests
         run: mvn --batch-mode clean verify
-      - name: Smoke test standalone search benchmark (no timing assertions)
+      - name: Compare original and optimized Java search (no timing thresholds)
         shell: bash
         run: |
           java -cp target/classes:target/test-classes \
-            com.chessengine.benchmark.EngineBenchmark --depth=1 --warmup=0 --runs=1 \
-            > engine-benchmark-smoke.csv
-          grep -q '^position,strategy,depth,runs,' engine-benchmark-smoke.csv
-          grep -q '^start,alpha-beta-tt,1,1,' engine-benchmark-smoke.csv
-          grep -q '^tactical,without-pruning,1,1,' engine-benchmark-smoke.csv
-          cat engine-benchmark-smoke.csv
+            com.chessengine.benchmark.EngineBenchmark --depth=2 --warmup=2 --runs=7 \
+            > engine-search-ab-results.csv
+          grep -q '^position,strategy,depth,runs,' engine-search-ab-results.csv
+          grep -q '^start,alpha-beta-tt-repeated,2,7,' engine-search-ab-results.csv
+          grep -q '^start,alpha-beta-tt,2,7,' engine-search-ab-results.csv
+          grep -q '^tactical,without-pruning,2,7,' engine-search-ab-results.csv
+          cat engine-search-ab-results.csv
+      - name: Upload search A/B measurements
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-search-ab-results
+          path: engine-search-ab-results.csv
+          if-no-files-found: error
       - name: Install Node.js 22
         uses: actions/setup-node@v4
         with:
