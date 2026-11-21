@@ -378,7 +378,7 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
                   <span>{Date.parse(item.dueAt) <= Date.now() ? 'Due now' : 'Due ' + dueLabel(item.dueAt)} · {item.attempts} attempts · {item.streak} recalls</span>
                   {(item.patterns?.length ?? 0) > 0 && <span className="lab-library-patterns">
                     {item.patterns?.map(kind => PATTERN_CATALOG[kind].title).join(' · ')}
-                  </span>
+                  </span>}
                 </div>
                 <div className="lab-library-actions">
                   <button type="button" className="btn-secondary" onClick={() => focusCard(item.id)}>Practice</button>
