@@ -3,7 +3,7 @@ import { Chess } from 'chess.js';
 import { analyzePositions, REVIEW_DEPTH } from './analysis';
 import { glyphs, isLightSquare, parseFen, squareOrder } from './chess';
 import { duePracticeCards, recurringThemeCounts, trainingProgress, type PracticeCard } from './practice';
-import { PATTERN_CATALOG } from './mistakePatterns';
+import { PATTERN_CATALOG, type PatternKind } from './mistakePatterns';
 import { gradeMove, uciToSan } from './review';
 
 interface Attempt {
@@ -36,12 +36,13 @@ function dueLabel(iso: string): string {
     next.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
+export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error, analyzedGameCounts }: {
   cards: PracticeCard[];
   onRecord: (id: string, success: boolean, plan: string) => boolean;
   onDelete: (id: string) => void;
   onBack: () => void;
   error: string | null;
+  analyzedGameCounts?: Map<PatternKind, number>;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -54,9 +55,10 @@ export function DecisionLabPage({ cards, onRecord, onDelete, onBack, error }: {
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
 
-  const due = duePracticeCards(cards);
+  const due = duePracticeCards(cards, new Date(), analyzedGameCounts);
   const insights = useMemo(() => trainingProgress(cards), [cards]);
-  const recurring = useMemo(() => recurringThemeCounts(cards), [cards]);
+  const recurring = useMemo(() => recurringThemeCounts(cards, analyzedGameCounts),
+    [cards, analyzedGameCounts]);
   const card = activeId === null ? due[0] : cards.find(item => item.id === activeId);
   const nextDue = due.find(item => item.id !== card?.id);
   const chess = useMemo(() => card ? new Chess(card.fen) : null, [card?.fen]);
